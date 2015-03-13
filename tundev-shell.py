@@ -13,58 +13,46 @@ class ClientDevCli(cmd.Cmd):
 
     def __init__(self):
         cmd.Cmd.__init__(self)
-        self.hosts = []
-        self.connections = []
-
-    def do_add_host(self, args):
-        """add_host 
-        Add the host to the host list"""
-        if args:
-            self.hosts.append(args.split(','))
-        else:
-            print "usage: host "
+        self._rdv_server = '10.10.8.41'
+        self._ssh_connection = None
 
     def do_connect(self, args):
         """Connect to all hosts in the hosts list"""
-        for host in self.hosts:
-            client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(
-                paramiko.AutoAddPolicy())
-            client.connect(host[0], 
-                username=host[1], 
-                password=host[2])
-            self.connections.append(client)
+        self._ssh_connection = paramiko.SSHClient()
+        self._ssh_connection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self._ssh_connection.connect(self._rdv_server, username='pi', password='raspberry')
 
     def do_run(self, command):
-        """run 
-        Execute this command on all hosts in the list"""
+        """run
+        Execute this command on the remote server"""
         if command:
-            for host, conn in zip(self.hosts, self.connections):
-                print 'Host: %s'  % (host[0])
-                stdin, stdout, stderr = conn.exec_command(command)
+            if self._ssh_connection:
+                print 'Host: %s'  % (self._rdv_server)
+                stdin, stdout, stderr = self._ssh_connection.exec_command(command)
                 stdin.close()
                 for line in stdout.read().splitlines():
-                    print 'host: %s: %s' % (host[0], line)
+                    print 'host: %s: %s' % (self._rdv_server, line)
         else:
             print "usage: run "
 
     def do_close(self, args):
-        for conn in self.connections:
-            conn.close()
+        if self._ssh_connection:
+            self._ssh_connection.close()
 
     def do_exit(self, args):
         """exit
         Terminates this command-line session"""
+        self.do_close(None)
         return True
 
     def do_logout(self, args):
         """logout
         Terminates this command-line session"""
-        return True
+        return self.do_exit(args)
 
     def do_EOF(self, args):
         """Send EOF (^D) to terminates this command-line session"""
-        return True
+        return self.do_exit(args)
 
 
 if __name__ == '__main__':
