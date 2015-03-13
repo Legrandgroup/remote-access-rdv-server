@@ -1,0 +1,9 @@
+This repository contains the source code for the tundev-shell, part of the remote access project.
+For more information about the remote access project, please consult the Confluence page:
+http://sirius.limousin.fr.grpleg.com/confluence/display/PRJACCESDISTANT
+
+The tundev-shell is a command-line interpreter running on the RDV server. It is via this shell that all tunnelling devs exchange information with the RDV server.
+
+This shell is running on the RDV server, and implemented in python
+For more information about the tundev-shell, please consult the related Confluence page at:
+http://sirius.limousin.fr.grpleg.com/confluence/display/PRJACCESDISTANT/Architecture+and+technical+documentation#Architectureandtechnicaldocumentation-tundev-shell
