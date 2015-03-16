@@ -4,14 +4,15 @@ import cmd
 import os
 import sys
 
-class ClientDevShell(cmd.Cmd):
-    """ Tundev CLI shell offered to client dev """
+class TunnellingDevShell(cmd.Cmd):
+    """ Tundev CLI shell offered to tunnelling devices """
 
     username = str(os.getuid())
     prompt = username + '$ '
 
     def __init__(self):
         cmd.Cmd.__init__(self)
+        self._tunnel_mode = 'L3'
 
     #~ def do_connect(self, args):
         #~ """Connect to all hosts in the hosts list"""
@@ -32,26 +33,25 @@ class ClientDevShell(cmd.Cmd):
         #~ else:
             #~ print "usage: run "
 
+    def do_get_tunnel_mode(self, args):
+        """Get the current tunnel mode"""
+        if self._tunnel_mode is None:
+            print('(unknown)')
+        else:
+            print self._tunnel_mode
+
     def do_echo(self, command):
-        """echo
-        Echo the string provided as parameter"""
+        """Echo the string provided as parameter"""
         print(command + '\n')
 
     def do_exit(self, args):
-        """exit
-        Terminates this command-line session"""
-        self.do_close(None)
+        """Terminates this command-line session"""
         return True
 
     def do_logout(self, args):
-        """logout
-        Terminates this command-line session"""
+        """Terminates this command-line session"""
         return self.do_exit(args)
 
     def do_EOF(self, args):
         """Send EOF (^D) to terminates this command-line session"""
         return self.do_exit(args)
-
-
-if __name__ == '__main__':
-    ClientDevShell().cmdloop()
