@@ -1,5 +1,9 @@
 #!/usr/bin/python
 
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+
 import cmd
 import os
 import sys
@@ -7,12 +11,11 @@ import sys
 class TunnellingDevShell(cmd.Cmd):
     """ Tundev CLI shell offered to tunnelling devices """
 
-    username = str(os.getuid())
-    prompt = username + '$ '
-
-    def __init__(self):
+    def __init__(self, shell_user_name):
         cmd.Cmd.__init__(self)
-        self._tunnel_mode = 'L3'
+        self.tunnel_mode = 'L3'
+        self._username = shell_user_name
+        self.prompt = self._username + '$ '
 
     #~ def do_connect(self, args):
         #~ """Connect to all hosts in the hosts list"""
@@ -34,22 +37,30 @@ class TunnellingDevShell(cmd.Cmd):
             #~ print "usage: run "
 
     def do_get_tunnel_mode(self, args):
-        """Get the current tunnel mode"""
-        if self._tunnel_mode is None:
+        """Usage: get_tunnel_mode
+
+Get the current tunnel mode"""
+        if self.tunnel_mode is None:
             print('(unknown)')
         else:
-            print self._tunnel_mode
+            print(self.tunnel_mode)
 
     def do_echo(self, command):
-        """Echo the string provided as parameter"""
+        """Usage: echo {string}
+
+Echo the string provided as parameter back to the console"""
         print(command + '\n')
 
     def do_exit(self, args):
-        """Terminates this command-line session"""
+        """Usage: exit
+
+Terminates this command-line session"""
         return True
 
     def do_logout(self, args):
-        """Terminates this command-line session"""
+        """Usage: logout
+
+Terminates this command-line session"""
         return self.do_exit(args)
 
     def do_EOF(self, args):
