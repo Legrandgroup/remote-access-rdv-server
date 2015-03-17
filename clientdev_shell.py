@@ -39,7 +39,7 @@ Publish the LAN IP address of the tunnelling dev
 Argument address should contain the IP address and the CIDR prefix separated by a character '/'
 eg: "192.168.1.2/24\""""
         try:
-            ipv4=ipaddr.IPv4Network(args)
+            ipv4 = ipaddr.IPv4Network(args)
             self.lan_ip_address = ipv4.ip
             self.lan_ip_prefix = ipv4._prefixlen
         except ValueError:
@@ -76,8 +76,12 @@ Output the readiness status of the RDV server, possible return values are "ready
         print('not_ready', file=sys.stderr)
     
     def do_get_vtun_parameters(self, args):
-        self._generate_vtun_config()
-        self._start_vtun()
+        """Usage: get_vtun_parameters
+
+Output the parameters of the vtun tunnel to connect to the RDV server
+"""
+        self._prepare_server_vtun_env()
+        self._start_vtun_server()
         print(self._vtun_config_to_str())
 
 if __name__ == '__main__':
