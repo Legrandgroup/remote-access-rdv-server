@@ -19,25 +19,6 @@ class TunnellingDevShell(cmd.Cmd):
         self.prompt = self._username + '$ '
         
         self._vtun_server_tunnel = None # The vtun tunnel service
-    
-    #~ def do_connect(self, args):
-        #~ """Connect to all hosts in the hosts list"""
-        #~ self._ssh_connection = paramiko.SSHClient()
-        #~ self._ssh_connection.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        #~ self._ssh_connection.connect(self._rdv_server, username='pi', password='raspberry')
-
-    #~ def do_run(self, command):
-        #~ """run
-        #~ Execute this command on the remote server"""
-        #~ if command:
-            #~ if self._ssh_connection:
-                #~ print 'Host: %s'  % (self._rdv_server)
-                #~ stdin, stdout, stderr = self._ssh_connection.exec_command(command)
-                #~ stdin.close()
-                #~ for line in stdout.read().splitlines():
-                    #~ print 'host: %s: %s' % (self._rdv_server, line)
-        #~ else:
-            #~ print "usage: run "
 
     def do_get_tunnel_mode(self, args):
         """Usage: get_tunnel_mode
