@@ -54,9 +54,9 @@ Terminates this command-line session"""
     def _prepare_server_vtun_env(self):
         """ Populate the attributes related to the tunnel configuration and store this into a newly instanciated self._vtun_server_tunnel """
         if self._username == '1000':    # For our (only) client RPI
-            self._vtun_server_tunnel = vtun_tunnel.ServerVtunTunnel(mode = self.tunnel_mode, internal_tunnel_ip_network = '192.168.100.0/30', internal_tunnel_near_end_ip = '192.168.100.1', internal_tunnel_far_end_ip = '192.168.100.2', external_tunnel_remote_host = 'RDV', external_tunnel_server_tcp_port = 5000)
+            self._vtun_server_tunnel = vtun_tunnel.ServerVtunTunnel(mode = self.tunnel_mode, int_tunnel_ip_network = '192.168.100.0/30', int_tunnel_near_end_ip = '192.168.100.1', int_tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000)
         elif self._username == '1001':    # For our (only) support RPI
-            self._vtun_server_tunnel = vtun_tunnel.ServerVtunTunnel(mode = self.tunnel_mode, internal_tunnel_ip_network = '192.168.101.0/30', internal_tunnel_near_end_ip = '192.168.101.1', internal_tunnel_far_end_ip = '192.168.101.2', external_tunnel_remote_host = 'RDV', external_tunnel_server_tcp_port = 5001)
+            self._vtun_server_tunnel = vtun_tunnel.ServerVtunTunnel(mode = self.tunnel_mode, int_tunnel_ip_network = '192.168.101.0/30', int_tunnel_near_end_ip = '192.168.101.1', int_tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001)
         else:
             print('Unknown tunnelling device account "%s"... cannot generate vtun parameters' % (self._username), file=sys.stderr)
 

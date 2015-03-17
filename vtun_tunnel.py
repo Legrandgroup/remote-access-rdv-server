@@ -36,55 +36,55 @@ class VtunTunnel(object):
         tundev_shell_config is a string directly coming from the devshell command 'get_vtun_parameters', that will allow to set all the attributes of this object.
         Warning if tundev_shell_config is provided, no other argument below is allowed (or a 'SimultaneousConfigAndAgumentsNotAllowed' exception will be raised)
         mode is a string or a TunnelMode object representing the tunnel mode. Supported values are L2, L3 and L3_multi
-        internal_tunnel_ip_network string or an ipaddr.IPv4Network object containing the IP network range in use within the tunnel
-        internal_tunnel_near_end_ip string or an ipaddr.IPv4Address object containing our IP address (near end of the tunnel)
-        internal_tunnel_far_end_ip string or an ipaddr.IPv4Address object containing  the IP address of the peer (far end of the tunnel)
-        external_tunnel_server_tcp_port (optional, can be set to None if unknown) a string or an int describes the outer TCP port of the process handling the tunnel
+        int_tunnel_ip_network string or an ipaddr.IPv4Network object containing the IP network range in use within the tunnel
+        int_tunnel_near_end_ip string or an ipaddr.IPv4Address object containing our IP address (near end of the tunnel)
+        int_tunnel_far_end_ip string or an ipaddr.IPv4Address object containing  the IP address of the peer (far end of the tunnel)
+        vtun_server_tcp_port (optional, can be set to None if unknown) a string or an int describes the outer TCP port of the process handling the tunnel
         """
         self._vtun_pid = None    # The PID of the slave vtun process handling this tunnel
         self._vtun_process = None    # The python process object handling this tunnel
         
         arg_mode = kwargs.get('mode', None) # Type of tunnel (L2, L3 or L3_multi)
-        arg_internal_tunnel_ip_network = kwargs.get('internal_tunnel_ip_network', None) # IP network (range) for the adressing within the tunnel
-        arg_internal_tunnel_near_end_ip = kwargs.get('internal_tunnel_near_end_ip', None) # IP address of the near end of the tunnel (internal to the tunnel)
-        arg_internal_tunnel_far_end_ip = kwargs.get('internal_tunnel_far_end_ip', None) # IP address of the far end of the tunnel (internal to the tunnel)
-        arg_external_tunnel_server_tcp_port = kwargs.get('external_tunnel_server_tcp_port', None)   # TCP port on the tunnel server machine external_tunnel_remote_host on which to setup the tunnel
+        arg_int_tunnel_ip_network = kwargs.get('int_tunnel_ip_network', None) # IP network (range) for the addressing within the tunnel
+        arg_int_tunnel_near_end_ip = kwargs.get('int_tunnel_near_end_ip', None) # IP address of the near end of the tunnel (internal to the tunnel)
+        arg_int_tunnel_far_end_ip = kwargs.get('int_tunnel_far_end_ip', None) # IP address of the far end of the tunnel (internal to the tunnel)
+        arg_vtun_server_tcp_port = kwargs.get('vtun_server_tcp_port', None)   # TCP port on which to connect on the tunnel server machine
 
         arg_tundev_shell_config = kwargs.get('tundev_shell_config', None)  # Check if there is a tundev_shell_config argument
         if arg_tundev_shell_config:    # If so, we will generate set our attributes according to the config
-            if not (arg_internal_tunnel_ip_network is None and arg_internal_tunnel_near_end_ip is None and arg_internal_tunnel_far_end_ip is None and external_tunnel_server_tcp_port is None):    # We also have a specific argument
+            if not (arg_int_tunnel_ip_network is None and arg_int_tunnel_near_end_ip is None and arg_int_tunnel_far_end_ip is None and vtun_server_tcp_port is None):    # We also have a specific argument
                 raise Exception('SimultaneousConfigAndAgumentsNotAllowed') 
             else:
                 self.set_characteristics_from_string(arg_tundev_shell_config)
         else:
-            self.set_characteristics(str(arg_mode), arg_internal_tunnel_ip_network, arg_internal_tunnel_near_end_ip, arg_internal_tunnel_far_end_ip, arg_external_tunnel_server_tcp_port)
+            self.set_characteristics(str(arg_mode), arg_int_tunnel_ip_network, arg_int_tunnel_near_end_ip, arg_int_tunnel_far_end_ip, arg_vtun_server_tcp_port)
 
-    def set_characteristics(self, mode, internal_tunnel_ip_network, internal_tunnel_near_end_ip, internal_tunnel_far_end_ip, external_tunnel_server_tcp_port):
+    def set_characteristics(self, mode, int_tunnel_ip_network, int_tunnel_near_end_ip, int_tunnel_far_end_ip, vtun_server_tcp_port):
         """ Set this object tunnel parameters
         mode is a string or a TunnelMode object reprensenting the tunnel mode. Supported values are L2, L3 and L3_multi
-        internal_tunnel_ip_network string containing the IP network range in use within the tunnel
-        internal_tunnel_near_end_ip string containing our IP address (near end of the tunnel)
-        internal_tunnel_far_end_ip string containing  the IP address of the peer (far end of the tunnel)
-        external_tunnel_server_tcp_port (optional, can be set to None if unknown) describes the outer TCP port of the process handling the tunnel
+        int_tunnel_ip_network string containing the IP network range in use within the tunnel
+        int_tunnel_near_end_ip string containing our IP address (near end of the tunnel)
+        int_tunnel_far_end_ip string containing  the IP address of the peer (far end of the tunnel)
+        vtun_server_tcp_port (optional, can be set to None if unknown) describes the outer TCP port of the process handling the tunnel
         """
         if mode is None:
             raise Exception('TunnelModeCannotBeNone')
         
         self.tunnel_mode = TunnelMode(str(mode))
-        self.vtun_internal_tunnel_ip_network = ipaddr.IPv4Network(str(internal_tunnel_ip_network))
-        self.vtun_internal_tunnel_near_end_ip = ipaddr.IPv4Address(str(internal_tunnel_near_end_ip))
-        self.vtun_internal_tunnel_far_end_ip = ipaddr.IPv4Address(str(internal_tunnel_far_end_ip))
+        self.vtun_int_tunnel_ip_network = ipaddr.IPv4Network(str(int_tunnel_ip_network))
+        self.vtun_int_tunnel_near_end_ip = ipaddr.IPv4Address(str(int_tunnel_near_end_ip))
+        self.vtun_int_tunnel_far_end_ip = ipaddr.IPv4Address(str(int_tunnel_far_end_ip))
         
-        if external_tunnel_server_tcp_port is None:
-            self.vtun_external_tunnel_server_tcp_port = None   # Undefined TCP ports are allowed, but we will need to specify the port before starting the tunnel!
+        if vtun_server_tcp_port is None:
+            self.vtun_server_tcp_port = None   # Undefined TCP ports are allowed, but we will need to specify the port before starting the tunnel!
         else:
             try:
-                tcp_port = int(external_tunnel_server_tcp_port)
+                tcp_port = int(vtun_server_tcp_port)
             except ValueError:
                 raise Exception('InvalidTcpPort:' + str(tcp_port))
             
             if tcp_port > 0 and tcp_port <= 65535:
-                self.vtun_external_tunnel_server_tcp_port = tcp_port
+                self.vtun_server_tcp_port = tcp_port
             else:
                 raise Exception('InvalidTcpPort:' + str(tcp_port))
 
@@ -99,13 +99,13 @@ class VtunTunnel(object):
         """
         if self.tunnel_mode is None:
             return False
-        if self.vtun_internal_tunnel_ip_network is None:
+        if self.vtun_int_tunnel_ip_network is None:
             return False
-        if self.vtun_internal_tunnel_near_end_ip is None:
+        if self.vtun_int_tunnel_near_end_ip is None:
             return False
-        if self.vtun_internal_tunnel_far_end_ip is None:
+        if self.vtun_int_tunnel_far_end_ip is None:
             return False
-        # Note: vtun_external_tunnel_server_tcp_port is not stricly required to define a valid the tunnel (but it will be to start it)
+        # Note: vtun_server_tcp_port is not stricly required to define a valid the tunnel (but it will be to start it)
         return True
     
     def to_vtund_config(self):
@@ -140,37 +140,37 @@ class ClientVtunTunnel(VtunTunnel):
         else:   # We are building the client config to match a server config
             if not isinstance(arg_from_server, ServerVtunTunnel):
                 raise Exception('WrongFromServerObject')
-            super(ClientVtunTunnel, self).__init__(mode =  arg_from_server.tunnel_mode, internal_tunnel_ip_network = arg_from_server.vtun_internal_tunnel_ip_network, internal_tunnel_near_end_ip = arg_from_server.vtun_internal_tunnel_far_end_ip, internal_tunnel_far_end_ip = arg_from_server.vtun_internal_tunnel_near_end_ip, external_tunnel_server_tcp_port = arg_from_server.vtun_external_tunnel_server_tcp_port)
-        self.vtun_remote_host = kwargs.get('vtun_remote_host', None)  # The remote host to connect to (if provided)
-        # Note: in all cases, the caller will need to provide a vtun_remote_host (it is not part of the ServerVtunTunnel object)
+            super(ClientVtunTunnel, self).__init__(mode =  arg_from_server.tunnel_mode, int_tunnel_ip_network = arg_from_server.vtun_int_tunnel_ip_network, int_tunnel_near_end_ip = arg_from_server.vtun_int_tunnel_far_end_ip, int_tunnel_far_end_ip = arg_from_server.vtun_int_tunnel_near_end_ip, vtun_server_tcp_port = arg_from_server.vtun_server_tcp_port)
+        self.vtun_server_hostname = kwargs.get('vtun_server_hostname', None)  # The remote host to connect to (if provided)
+        # Note: in all cases, the caller will need to provide a vtun_server_hostname (it is not part of the ServerVtunTunnel object)
     
-    def set_remote_host(self, remote_host):
+    def set_vtun_server_hostname(self, vtun_server_hostname):
         """ Set the remote host to connect to (this is mandatory after populating ClientVtunTunnel's attribute with create_client_from_server()
-        remote_host: the hostname or IP address of the vtund server
+        vtun_server_hostname: the hostname or IP address of the vtund server
         """
-        self.vtun_remote_host = remote_host
+        self.vtun_server_hostname = vtun_server_hostname
     
     def to_tundev_shell_output(self):
-        # In shell output, we actually do not specify the external_tunnel_remote_host, because it is assumed to be tunnelled inside ssh (it is thus localhost)
+        # In shell output, we actually do not specify the vtun_server_hostname, because it is assumed to be tunnelled inside ssh (it is thus localhost)
         message = ''
-        message += 'tunnel_ip_network: ' + str(self.vtun_internal_tunnel_ip_network.network) + '\n'
-        message += 'tunnel_ip_prefix: /' + str(self.vtun_internal_tunnel_ip_network.prefixlen) + '\n'
-        message += 'tunnel_ip_netmask: ' + str(self.vtun_internal_tunnel_ip_network.netmask) + '\n'
-        message += 'tunnelling_dev_ip_address: ' + str(self.vtun_internal_tunnel_near_end_ip) + '\n'
-        message += 'rdv_server_ip_address: ' + str(self.vtun_internal_tunnel_far_end_ip) + '\n'
-        if self.vtun_external_tunnel_server_tcp_port is None:
+        message += 'tunnel_ip_network: ' + str(self.vtun_int_tunnel_ip_network.network) + '\n'
+        message += 'tunnel_ip_prefix: /' + str(self.vtun_int_tunnel_ip_network.prefixlen) + '\n'
+        message += 'tunnel_ip_netmask: ' + str(self.vtun_int_tunnel_ip_network.netmask) + '\n'
+        message += 'tunnelling_dev_ip_address: ' + str(self.vtun_int_tunnel_near_end_ip) + '\n'
+        message += 'rdv_server_ip_address: ' + str(self.vtun_int_tunnel_far_end_ip) + '\n'
+        if self.vtun_server_tcp_port is None:
             raise Exception('TcpPortCannotBeNone')
         else:
-            message += 'rdv_server_vtun_tcp_port: ' + str(self.vtun_external_tunnel_server_tcp_port)
+            message += 'rdv_server_vtun_tcp_port: ' + str(self.vtun_server_tcp_port)
         return message
         
-    def is_valid(self): # Overload is_valid() for client tunnels... we also need a external_tunnel_remote_host and a vtun_external_tunnel_server_tcp_port
+    def is_valid(self): # Overload is_valid() for client tunnels... we also need a vtun_server_hostname and a vtun_server_tcp_port
         """ Check if our attributes are enough to define a vtun tunnel
         Returns True if all minimum attributes are set
         """
         if not super(ClientVtunTunnel, self).is_valid():    # First ask parent's is_valid()
             return False
-        if self.vtun_remote_host is None:
+        if self.vtun_server_hostname is None:
             return False
         return True
         
