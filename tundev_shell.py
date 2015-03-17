@@ -7,7 +7,7 @@ from __future__ import print_function
 import cmd
 import os
 import sys
-import ipaddr
+import vtun_tunnel
 
 class TunnellingDevShell(cmd.Cmd):
     """ Tundev CLI shell offered to tunnelling devices """
@@ -18,10 +18,7 @@ class TunnellingDevShell(cmd.Cmd):
         self._username = shell_user_name
         self.prompt = self._username + '$ '
         
-        self._vtun_tunnel_ip_network = None
-        self._vtun_tunnelling_dev_ip = None
-        self._vtun_rdv_server_ip = None
-        self._vtun_rdv_server_tcp_port = None
+        self._vtun_tunnel = None
     
     #~ def do_connect(self, args):
         #~ """Connect to all hosts in the hosts list"""
@@ -76,20 +73,14 @@ Terminates this command-line session"""
     def _generate_vtun_config(self):
         """ Populate the attribute related to the vtun tunnel of this object """
         if self._username == '1000':    # For our (only) client RPI
-            self._vtun_tunnel_ip_network = ipaddr.IPv4Network('192.168.100.0/30')
-            self._vtun_tunnelling_dev_ip = ipaddr.IPv4Address('192.168.100.2')
-            self._vtun_rdv_server_ip = ipaddr.IPv4Address('192.168.100.1')
-            self._vtun_rdv_server_tcp_port = 5000
+            self._vtun_tunnel = vtun_tunnel.VtunTunnel(mode = self.tunnel_mode, internal_tunnel_ip_network = '192.168.100.0/30', internal_tunnel_near_end_ip = '192.168.100.2', internal_tunnel_far_end_ip = '192.168.100.2', external_tunnel_remote_host = 'RDV', external_tunnel_tcp_port = 5000)
         elif self._username == '1001':    # For our (only) support RPI
-            self._vtun_tunnel_ip_network = ipaddr.IPv4Address('192.168.101.0/30')
-            self._vtun_tunnelling_dev_ip = ipaddr.IPv4Address('192.168.101.2')
-            self._vtun_rdv_server_ip = ipaddr.IPv4Address('192.168.101.1')
-            self._vtun_rdv_server_tcp_port = 5001
+            self._vtun_tunnel = vtun_tunnel.VtunTunnel(mode = self.tunnel_mode, internal_tunnel_ip_network = '192.168.101.0/30', internal_tunnel_near_end_ip = '192.168.101.2', internal_tunnel_far_end_ip = '192.168.101.2', external_tunnel_remote_host = 'RDV', external_tunnel_tcp_port = 5001)
         else:
             print('Unknown tunnelling device account "%s"... cannot generate vtun parameters' % (self._username), file=sys.stderr)
 
     def _has_valid_vtun_config(self):
-        if self._vtun_tunnel_ip_network is None or self._vtun_tunnelling_dev_ip is None or self._vtun_rdv_server_ip is None or self._vtun_rdv_server_tcp_port is None:
+        if self._vtun_tunnel is None:
             return False
         return True
 
@@ -101,11 +92,7 @@ Terminates this command-line session"""
             pass
     
     def _vtun_config_to_str(self):
-        message = ''
-        message += 'tunnel_ip_network: ' + str(self._vtun_tunnel_ip_network.network) + '\n'
-        message += 'tunnel_ip_prefix: /' + str(self._vtun_tunnel_ip_network.prefixlen) + '\n'
-        message += 'tunnel_ip_netmask: ' + str(self._vtun_tunnel_ip_network.netmask) + '\n'
-        message += 'tunnelling_dev_ip_address: ' + str(self._vtun_tunnelling_dev_ip) + '\n'
-        message += 'rdv_server_ip_address: ' + str(self._vtun_rdv_server_ip) + '\n'
-        message += 'rdv_server_vtun_tcp_port: ' + str(self._vtun_rdv_server_tcp_port)
-        return message
+        if not self._has_valid_vtun_config():
+            print('Cannot start rdv server side vtun. vtun is not fully configured', file=sys.stderr)
+        else:
+            return self._vtun_tunnel.to_tundev_shell_output()
