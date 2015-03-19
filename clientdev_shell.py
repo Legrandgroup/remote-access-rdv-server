@@ -14,8 +14,8 @@ import time
 
 import tundev_shell
 
-class ClientDevShell(tundev_shell.TunnellingDevShell):
-    """ Tundev CLI shell offered to client dev """
+class OnsiteDevShell(tundev_shell.TunnellingDevShell):
+    """ Tundev CLI shell offered to an onsite dev """
 
     VTUN_READY_FNAME_PREFIX = "/var/run/vtun_ready-"
     
@@ -25,7 +25,7 @@ class ClientDevShell(tundev_shell.TunnellingDevShell):
         self.lan_ip_prefix = None
         self.uplink_type = None
 
-    # Only for support
+    # Only for master dev=>move to masterdev_shell.py
     #~ def do_set_tunnel_mode(self, args):
         #~ """Set the current tunnel mode
         #~ Valid modes are L2, L3, L3_multi
@@ -64,7 +64,7 @@ Wait until the RDV server is ready to accept a new vtun session.
 Output the readiness status of the RDV server, possible return values are "ready", "not_ready"
 """
         timeout = 60    # 60s
-        vtun_check_fname = ClientDevShell.VTUN_READY_FNAME_PREFIX + self._username
+        vtun_check_fname = OnsiteDevShell.VTUN_READY_FNAME_PREFIX + self._username
         print('Checking "%s"' % (vtun_check_fname))
         while timeout>0:
             if os.path.isfile(vtun_check_fname):
@@ -86,6 +86,6 @@ Output the parameters of the vtun tunnel to connect to the RDV server
 
 if __name__ == '__main__':
     username = str(os.getuid())
-    clientdev_shell = ClientDevShell(username)
-    clientdev_shell.tunnel_mode = 'L3'	# FIXME: read from file (should be set by support dev shell)
-    clientdev_shell.cmdloop()
+    onsite_dev_shell = OnsiteDevShell(username)
+    onsite_dev_shell.tunnel_mode = 'L3'	# FIXME: read from file (should be set by master dev shell)
+    onsite_dev_shell.cmdloop()
