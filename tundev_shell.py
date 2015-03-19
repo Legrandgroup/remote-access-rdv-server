@@ -8,7 +8,7 @@ import cmd
 import os
 import sys
 #We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
-import vtun_tunnel
+from pythonvtunlib import vtun_tunnel
 
 class TunnellingDevShell(cmd.Cmd):
     """ Tundev CLI shell offered to tunnelling devices """
