@@ -7,8 +7,7 @@ from __future__ import print_function
 import cmd
 import os
 import sys
-#We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
-from pythonvtunlib import vtun_tunnel
+import vtun_manager
 
 class TunnellingDevShell(cmd.Cmd):
     """ Tundev CLI shell offered to tunnelling devices """
@@ -54,31 +53,18 @@ Terminates this command-line session"""
 
     def _prepare_server_vtun_env(self):
         """ Populate the attributes related to the tunnel configuration and store this into a newly instanciated self._vtun_server_tunnel """
-        if self._username == '1000':    # For our (only) onsite RPI
-            self._vtun_server_tunnel = vtun_tunnel.ServerVtunTunnel(mode = self.tunnel_mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000)
-        elif self._username == '1001':    # For our (only) master RPI
-            self._vtun_server_tunnel = vtun_tunnel.ServerVtunTunnel(mode = self.tunnel_mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001)
-        else:
-            print('Unknown tunnelling device account "%s"... cannot generate vtun parameters' % (self._username), file=sys.stderr)
-
-    def _has_valid_vtun_config(self):
-        """ Check if we have an existing (not None) and valid self._vtun_server_tunnel attribute. Return True is so """
-        if self._vtun_server_tunnel is None:
-            return False
-        if not self._vtun_server_tunnel.is_valid(): # Check if tunnel environment is sufficiently filled-in to start vtun
-            return False
-        return True
+        self._vtun_server_tunnel = vtun_manager.VtunManager().request_new_tunnel(self.tunnel_mode, self._username)
 
     def _start_vtun_server(self):
         """ Start the vtun service according to the remote tundev shell configuration """
-        if not self._has_valid_vtun_config():
-            raise Exception('VtunNotProperlyConfigured')
+        if not self._vtun_server_tunnel is None:
+            self._vtun_server_tunnel.start_server()
         else:
-            pass    # TODO
+            raise Exception('VtunNotProperlyConfigured')
     
     def _vtun_config_to_str(self):
         """ Dump the vtun parameters on the tunnelling dev side (client side of the tunnel) """
-        if not self._has_valid_vtun_config():
-            raise Exception('VtunNotProperlyConfigured')
+        if not self._vtun_server_tunnel is None:
+            return self._vtun_server_tunnel.to_matching_client_config_str()
         else:
-            return vtun_tunnel.ClientVtunTunnel(from_server = self._vtun_server_tunnel).to_tundev_shell_output()
+            raise Exception('VtunNotProperlyConfigured')
