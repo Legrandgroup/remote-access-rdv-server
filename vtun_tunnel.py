@@ -145,7 +145,7 @@ class ClientVtunTunnel(VtunTunnel):
         # Note: in all cases, the caller will need to provide a vtun_server_hostname (it is not part of the ServerVtunTunnel object)
     
     def set_vtun_server_hostname(self, vtun_server_hostname):
-        """ Set the remote host to connect to (this is mandatory after populating ClientVtunTunnel's attribute with create_client_from_server()
+        """ Set the remote host to connect to (this is mandatory after populating ClientVtunTunnel's attribute using from_server on ClientVtunTunnel's constructor
         vtun_server_hostname: the hostname or IP address of the vtund server
         """
         self.vtun_server_hostname = vtun_server_hostname
