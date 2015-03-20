@@ -53,18 +53,20 @@ Terminates this command-line session"""
 
     def _prepare_server_vtun_env(self):
         """ Populate the attributes related to the tunnel configuration and store this into a newly instanciated self._vtun_server_tunnel """
-        self._vtun_server_tunnel = vtun_manager.VtunManager().request_new_tunnel(self.tunnel_mode, self._username)
+        temp_tundevmgr = vtun_manager.TundevManager()
+        temp_tundevmgr.register(username = self._username, shell_alive_lock_fn = '/var/lock/' + str(self._username) + '_tundev_shell.lock')
+        self._vtun_server_tunnel = temp_tundevmgr.request_new_tunnel(self._username, self.tunnel_mode)	# Temp hack to keep vtun_manager.TundevInstance in scope
 
     def _start_vtun_server(self):
         """ Start the vtun service according to the remote tundev shell configuration """
         if not self._vtun_server_tunnel is None:
-            self._vtun_server_tunnel.start_server()
+            self._vtun_server_tunnel.start_vtun_server()
         else:
-            raise Exception('VtunNotProperlyConfigured')
+            raise Exception('CannotStartServer:TunnelNotProperlyConfigured')
     
     def _vtun_config_to_str(self):
         """ Dump the vtun parameters on the tunnelling dev side (client side of the tunnel) """
         if not self._vtun_server_tunnel is None:
             return self._vtun_server_tunnel.to_matching_client_config_str()
         else:
-            raise Exception('VtunNotProperlyConfigured')
+            raise Exception('CannotGenerateClientConfigStr:TunnelNotProperlyConfigured')
