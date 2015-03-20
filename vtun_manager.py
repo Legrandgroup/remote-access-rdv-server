@@ -93,6 +93,9 @@ class TundevManager(object):
     """
 
     def __init__(self):
+        """ Constructor
+        Initialise with an empty TunDevBinding dict
+        """
         self.tundev_dict = {}
 
     def register(self, username, shell_alive_lock_fn):
