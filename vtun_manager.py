@@ -51,8 +51,7 @@ class TundevBinding(object):
         """ Start a vtund server to handle connectivity with this tunnelling device
         """
         if not self.vtun_server_tunnel is None:
-            print('Starting vtun server... on account ' + str(self.username) + ' (doing nothing)!')
-            print('Config file for vtund would be "' + self.vtun_server_tunnel.to_vtund_config() + '"')
+            self.vtun_server_tunnel.start()
         else:
             raise Exception('VtunServerCannotBeStarted:NotConfigured')
 
@@ -60,7 +59,7 @@ class TundevBinding(object):
         """ Stop the vtund server that is handling connectivity with this tunnelling device
         """
         if not self.vtun_server_tunnel is None:
-            print('Stopping vtun server... on account ' + str(self.username) + ' (doing nothing)!')
+            self.vtun_server_tunnel.stop()
         else:
             raise Exception('VtunServerCannotBeStopped:NotConfigured')
 
