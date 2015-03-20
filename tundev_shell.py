@@ -67,6 +67,6 @@ Terminates this command-line session"""
     def _vtun_config_to_str(self):
         """ Dump the vtun parameters on the tunnelling dev side (client side of the tunnel) """
         if not self._vtun_server_tunnel is None:
-            return self._vtun_server_tunnel.to_matching_client_config_str()
+            return self._vtun_server_tunnel.to_matching_client_tundev_shell_output()
         else:
             raise Exception('CannotGenerateClientConfigStr:TunnelNotProperlyConfigured')
