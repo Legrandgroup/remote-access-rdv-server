@@ -20,6 +20,9 @@ class OnsiteDevShell(tundev_shell.TunnellingDevShell):
     VTUN_READY_FNAME_PREFIX = "/var/run/vtun_ready-"
     
     def __init__(self, username):
+        """ Constructor
+        \param username The user account we are using on the RDV server
+        """
         tundev_shell.TunnellingDevShell.__init__(self, username)
         self.lan_ip_address = None
         self.lan_ip_prefix = None
