@@ -16,19 +16,46 @@ import logging
 
 import tundev_shell
 
+import atexit
+
 progname = os.path.basename(sys.argv[0])
+
+# def cleanupAtExit():
+#     """
+#     Called when this program is terminated, to release the lock
+#     """
+#     
+#     global main_lock
+#     
+#     if main_lock and main_lock.i_am_locking():
+#         #print(progname + ': Releasing lock file', file=sys.stderr)
+#         main_lock.release()
+#         main_lock = None
+
+# def signalHandler(signum, frame):
+#     """
+#     Called when receiving a UNIX signal
+#     Will only terminate if receiving a SIGINT or SIGTERM, otherwise, just ignore the signal
+#     """
+#     
+#     if signum == signal.SIGINT or signum == signal.SIGTERM:
+#         cleanupAtExit()
+#     else:
+#         #print(progname + ': Ignoring signal ' + str(signum), file=sys.stderr)
+#         pass
 
 class OnsiteDevShell(tundev_shell.TunnellingDevShell):
     """ Tundev CLI shell offered to an onsite dev """
 
     VTUN_READY_FNAME_PREFIX = "/var/run/vtun_ready-"
     
-    def __init__(self, username, logger):
+    def __init__(self, username, logger, lockfilename):
         """ Constructor
         \param username The user account we are using on the RDV server
         \param logger A logging.Logger to use for log messages
+        \param lockfilename The lockfile to grabbed during the whole life duration of the shell
         """
-        tundev_shell.TunnellingDevShell.__init__(self, shell_user_name = username, logger = logger)    # Construct inherited TunnellingDevShell object
+        tundev_shell.TunnellingDevShell.__init__(self, shell_user_name = username, logger = logger, lockfilename = lockfilename)    # Construct inherited TunnellingDevShell object
         
         self.lan_ip_address = None
         self.lan_ip_prefix = None
@@ -112,8 +139,11 @@ if __name__ == '__main__':
     
     logger.debug(progname + ': Starting on user account ' + username)
 
+    # lockfilename is passed to OnsiteDevShell's constructor. This file will be kept under a filesystem lock until this shell process is terminated
+    lockfilename = '/var/lock/' + progname + '-' + str(os.getpid()) # .lock will be suffixed to the filename
+    
     # Instanciate the shell
-    onsite_dev_shell = OnsiteDevShell(username = username, logger = logger)
+    onsite_dev_shell = OnsiteDevShell(username = username, logger = logger, lockfilename = lockfilename)
     onsite_dev_shell.tunnel_mode = 'L3'	# FIXME: read from file (should be set by master dev shell)
     
     # Loop into the shell CLI parsing

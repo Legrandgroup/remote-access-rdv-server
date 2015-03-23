@@ -13,7 +13,10 @@ import threading
 import gobject
 import dbus
 import dbus.mainloop.glib
-from cookielib import logger
+
+import lockfile
+
+import logging
 
 DBUS_NAME = 'com.legrandelectric.RemoteAccess.TundevManager'    # The name of bus we are creating in D-Bus
 DBUS_OBJECT_ROOT = '/com/legrandelectric/RemoteAccess/TundevManager'    # The root under which we will create a D-Bus object with the username of the account for the tunnelling device for D-Bus communication, eg: /com/legrandelectric/RemoteAccess/TundevManager/1000 to communicate with a TundevBinding instance running for the UNIX account 1000 (/home/1000)
@@ -22,10 +25,11 @@ DBUS_SERVICE_INTERFACE = 'com.legrandelectric.RemoteAccess.TundevManager'    # T
 class TunnellingDevShell(cmd.Cmd):
     """ Tundev CLI shell offered to tunnelling devices """
 
-    def __init__(self, shell_user_name, logger):
+    def __init__(self, shell_user_name, logger, lockfilename = None):
         """ Constructor
         \param shell_user_name The user account we are using on the RDV server
         \param logger A logging.Logger to use for log messages
+        \param lockfilename The lockfile to grabbed during the whole life duration of the shell
         """
         cmd.Cmd.__init__(self) # cmd is a Python old-style class so we cannot use super()
         
@@ -55,7 +59,16 @@ class TunnellingDevShell(cmd.Cmd):
         self._dbus_loop_thread.setDaemon(True) # D-Bus loop should be forced to terminate when main program exits
         self._dbus_loop_thread.start()
         self._bus.watch_name_owner(DBUS_NAME, self._handleBusOwnerChanged) # Install a callback to run when the bus owner changes
-
+        
+        if not lockfilename is None:
+            self._shell_lockfilename = lockfilename
+            self._shell_lockfile = lockfile.FileLock(self._shell_lockfilename)
+            try:
+                self.logger.debug('Acquiring lock on ' + lockfilename + '.lock')
+                self._shell_lockfile.acquire(timeout = 0)
+            except:
+                raise Exception('CannotGetLockfile')
+        
     # D-Bus related methods
     def _loopHandleDbus(self):
         """ This method should be run within a thread... This thread's aim is to run the Glib's main loop while the main thread does other actions in the meantime
