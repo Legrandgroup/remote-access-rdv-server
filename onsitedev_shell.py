@@ -83,7 +83,7 @@ Output the readiness status of the RDV server, possible return values are "ready
 
 Output the parameters of the vtun tunnel to connect to the RDV server
 """
-        self._prepare_server_vtun_env()
+        
         self._start_vtun_server()
         print(self._vtun_config_to_str())
 

@@ -7,8 +7,26 @@ from __future__ import print_function
 import cmd
 import os
 import sys
+
+import threading
+
+import gobject
+import dbus
+import dbus.service
+import dbus.mainloop.glib
+
+import argparse
+
 #We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
 from pythonvtunlib import vtun_tunnel
+
+progname = os.path.basename(sys.argv[0])
+
+tundev_manager = None
+
+DBUS_NAME = 'com.legrandelectric.RemoteAccess.TundevManager'	# The name of bus we are creating in D-Bus
+DBUS_OBJECT_ROOT = '/com/legrandelectric/RemoteAccess/TundevManager'	# The root under which we will create a D-Bus object with the username of the account for the tunnelling device for D-Bus communication, eg: /com/legrandelectric/RemoteAccess/TundevManager/1000 to communicate with a TundevBinding instance running for the UNIX account 1000 (/home/1000)
+DBUS_SERVICE_INTERFACE = 'com.legrandelectric.RemoteAccess.TundevManager'	# The name of the D-Bus service under which we will perform input/output on D-Bus
 
 class TundevBinding(object):
     """ Class representing a tunnelling dev connected to the RDV server
@@ -41,7 +59,7 @@ class TundevBinding(object):
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
             self.vtun_server_tunnel.set_shared_secret(self.username)
             self.vtun_server_tunnel.set_tunnel_name('tundev' + self.username)
-        elif self.tundsev_role == 'master':    # For our (only) master RPI
+        elif self.tundev_role == 'master':    # For our (only) master RPI
             self.vtun_server_tunnel = vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
             self.vtun_server_tunnel.set_shared_secret(self.username)
@@ -63,61 +81,168 @@ class TundevBinding(object):
         else:
             raise Exception('VtunServerCannotBeStopped:NotConfigured')
 
-    def to_matching_client_tundev_shell_output(self):
-        """ Output a tundev shell output string for a client tunnel matching with this configured vtun server
+    def to_corresponding_client_tundev_shell_config(self):
+        """ Generate the tundev shell output string for a client tunnel corresponding to this configured vtun server
         
-        This can directly be output in the tundev shell for the tunnelling device to know which client vtun configuration to apply
+        This has the same format as the tundev shell command get_vtun_parameters
         
-        \return A string containing tundev shell output string for the tundev shell command get_vtun_parameters
+        \return A list of strings containing in each entry, a line for the tundev shell output
         """
         matching_client_tunnel = vtun_tunnel.ClientVtunTunnel(from_server = self.vtun_server_tunnel)
         # In shell output, we actually do not specify the vtun_server_hostname, because it is assumed to be tunnelled inside ssh (it is thus localhost)
-        message = ''
-        message += 'tunnel_ip_network: ' + str(matching_client_tunnel.tunnel_ip_network.network) + '\n'
-        message += 'tunnel_ip_prefix: /' + str(matching_client_tunnel.tunnel_ip_network.prefixlen) + '\n'
-        message += 'tunnel_ip_netmask: ' + str(matching_client_tunnel.tunnel_ip_network.netmask) + '\n'
-        message += 'tunnelling_dev_ip_address: ' + str(matching_client_tunnel.tunnel_near_end_ip) + '\n'
-        message += 'rdv_server_ip_address: ' + str(matching_client_tunnel.tunnel_far_end_ip) + '\n'
+        result = []
+        result += ['tunnel_ip_network: ' + str(matching_client_tunnel.tunnel_ip_network.network)]
+        result += ['tunnel_ip_prefix: /' + str(matching_client_tunnel.tunnel_ip_network.prefixlen)]
+        result += ['tunnel_ip_netmask: ' + str(matching_client_tunnel.tunnel_ip_network.netmask)]
+        result += ['tunnelling_dev_ip_address: ' + str(matching_client_tunnel.tunnel_near_end_ip)]
+        result += ['rdv_server_ip_address: ' + str(matching_client_tunnel.tunnel_far_end_ip)]
         if matching_client_tunnel.vtun_server_tcp_port is None:
             raise Exception('TcpPortCannotBeNone')
         else:
-            message += 'rdv_server_vtun_tcp_port: ' + str(matching_client_tunnel.vtun_server_tcp_port)
-        message += 'tunnel_secret: ' + str(matching_client_tunnel.tunnel_key) + '\n'
-        return message
-
-class TundevManager(object):
-    """ Tunnelling device management class
-    This class manages all tunnelling devices connected to the the RDV server
-    Exchange of data between tundev shells and this manager are done via D-Bus
-    """
-
-    def __init__(self):
-        """ Constructor
-        Initialise with an empty TunDevBinding dict
+            result += ['rdv_server_vtun_tcp_port: ' + str(matching_client_tunnel.vtun_server_tcp_port)]
+        result += ['tunnel_secret: ' + str(matching_client_tunnel.tunnel_key)]
+        return result
+    
+    def __del__(self):
+        """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
         """
-        self.tundev_dict = {}
+        #print('Binding for user ' + self.username + ' gets deleted')
+        try:
+            self.vtun_server_tunnel.stop()
+        except:
+            pass
 
-    def register(self, username, shell_alive_lock_fn):
+class TundevBindingDBusService(TundevBinding, dbus.service.Object):
+    """ Class allowing to send/receive D-Bus requests to a TundevBinding object
+    """
+    def __init__(self, conn, username, dbus_object_path, shell_alive_lock_fn = None, **kwargs):
+        """ Instanciate a new TundevBindingDBusService handling the user account \p username
+        \param conn A D-Bus connection object
+        \param dbus_loop A main loop to use to process D-Bus request/signals
+        \param dbus_object_path The path of the object to handle on D-Bus
+        \param username Inherited from TundevBinding.__init__()
+        \param shell_alive_lock_fn  Inherited from TundevBinding.__init__()
+        """
+        # Note: **kwargs is here to make this contructor more generic (it will however force args to be named, but this is anyway good practice) and is a step towards efficient mutliple-inheritance with Python new-style-classes
+        if username is None:
+            raise Exception('MissingUsername')
+        
+        dbus.service.Object.__init__(self, conn = conn, object_path = dbus_object_path)
+        TundevBinding.__init__(self, username = username, shell_alive_lock_fn = shell_alive_lock_fn)
+    
+    # D-Bus-related methods
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='')
+    def ConfigureService(self, mode):
+        """ Configure a tunnel server to handle connectivity with this tunnelling device
+        
+        \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
+        """
+        self.configure_service(mode)
+        
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='')
+    def StartTunnelServer(self):
+        """ Start a vtund server to handle connectivity with this tunnelling device
+        """
+        
+        self.start_vtun_server()
+    
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='')
+    def StopTunnelServer(self):
+        """ Stop a vtund server to handle connectivity with this tunnelling device
+        """
+        
+        self.stop_vtun_server()
+    
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
+    def GetAssociatedClientTundevShellConfig(self):
+        """ Generate the tundev shell output string for a client tunnel corresponding to this configured vtun server
+        
+        This has the same format as the tundev shell command get_vtun_parameters
+        
+        \return A list of strings containing in each entry, a line for the tundev shell output
+        """
+        return self.to_corresponding_client_tundev_shell_config()
+
+class TundevManagerDBusService(dbus.service.Object):
+    """ Class allowing to send D-Bus requests to a TundevManager object
+    """
+    
+    def __init__(self, conn, dbus_object_path = DBUS_OBJECT_ROOT, **kwargs):
+        """ Constructor a new TundevManagerDBusService handling D-Bus requests from tundev shells
+        
+        Initialise with an empty TunDevBindingDBusService dict
+        
+        \param conn A D-Bus connection object
+        \param dbus_object_path The object path to handle on D-Bus
+        """
+        # Note: **kwargs is here to make this contructor more generic (it will however force args to be named, but this is anyway good practice) and is a step towards efficient mutliple-inheritance with Python new-style-classes
+        self._conn = conn
+        dbus.service.Object.__init__(self, conn = self._conn, object_path = dbus_object_path)
+        
+        self._tundev_dict = {}    # Initialise with an empty TunDevBinding dict
+        self._tundev_dict_mutex = threading.Lock() # This mutex protects writes and reads to the _tundev_dict attribute
+
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sss', out_signature='s')
+    def RegisterTundevBinding(self, username, mode, shell_alive_lock_fn):
         """ Register a new tunnelling device to the TundevManager
         
         \param username Username of the account used by the tunnelling device
+        \param mode A string containing the tunnel mode (L2, L3 etc...)
         \param shell_alive_lock_fn Filename of a flock()'ed file. The tundev shell should flock() this file and keep it this way, which proofs that the tundev shell is still alive. We will detect if the lock falls and assume the tundevl shell is not running anymore
+
+        \return We will return the newly instanciated TundevBindingDBusService object path
         """
-        # TODO: grab a mutex
-        if username in self.tundev_dict:
-            raise Exception('DuplicateTundevError') # FIXME: if this username is already known, clean up previous instance (tunnel etc...)
         
-        self.tundev_dict[username] = TundevBinding(username, shell_alive_lock_fn)
+        new_binding_object_path = DBUS_OBJECT_ROOT + '/' + username
+        with self._tundev_dict_mutex:
+            print('Got a request to register username ' + username)
+            if username in self._tundev_dict:
+                print('Duplicate username')
+                del self._tundev_dict[username]  # Get rid of previously existing binding object handling this username
+            
+            
+            new_binding = TundevBindingDBusService(conn = self._conn, username = username, shell_alive_lock_fn = shell_alive_lock_fn, dbus_object_path = new_binding_object_path)
+                
+            self._tundev_dict[username] = new_binding
+        
+        self._tundev_dict[username].configure_service(mode)
+        
+        return new_binding_object_path
     
-    def request_new_tunnel(self, username, mode):
-        """ Ask for a new vtun tunnel to serve the tundev shell specified by \p username
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
+    def DumpTundevBindings(self):
+        """ Dump all TundevBindingDBusService objects registerd
         
-        \param username Username of the account used by the tunnelling device
-        \mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
-        
-        \return We will return the newly instanciated TundevBinding
+        \return We will return an array of instanciated TundevBindingDBusService object path
         """
         # FIXME: handle the case where there is no TundevInstance for this username
-        self.tundev_dict[username].configure_service(mode)
-        return self.tundev_dict[username]
+        
+        tundev_bindings_list = self._tundev_dict.keys()
+        #tundev_bindings_list.extend(DBUS_OBJECT_ROOT + '/%s' % item for item in tundev_bindings_list[:])
+        return map( lambda p: DBUS_OBJECT_ROOT + '/' + p, tundev_bindings_list)
+        #return tundev_bindings_list
+
+
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True) # Use Glib's mainloop as the default loop for all subsequent code
+
+if __name__ == '__main__':
+    #atexit.register(cleanupAtExit)
+    parser = argparse.ArgumentParser(description="This program launches a vtun manager daemon. \
+It will handle tunnel creation/destruction on behalf of tundev_shell processes, via D-Bus methods and signal. \
+It will also connects onsite to master tunnels to create an end-to-end session", prog=progname)
+    parser.add_argument('-d', '--debug', action='store_true', help='display debug info', default=False)
+    args = parser.parse_args()
+    system_bus = dbus.SystemBus(private=True)
+# Probably not required
+#    gobject.threads_init() # Allow the mainloop to run as an independent thread
+#    dbus.mainloop.glib.threads_init()
+    name = dbus.service.BusName(DBUS_NAME, system_bus) # Publish the name to the D-Bus so that clients can see us
+    #signal.signal(signal.SIGINT, signalHandler) # Install a cleanup handler on SIGINT and SIGTERM
+    #signal.signal(signal.SIGTERM, signalHandler)
+    
+    dbus_loop = gobject.MainLoop()
+    
+    tundev_manager = TundevManagerDBusService(conn = system_bus, dbus_loop = dbus_loop)
+    
+    dbus_loop.run()
 

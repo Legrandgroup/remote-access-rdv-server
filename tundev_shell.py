@@ -7,7 +7,16 @@ from __future__ import print_function
 import cmd
 import os
 import sys
-import vtun_manager
+
+import threading
+
+import gobject
+import dbus
+import dbus.mainloop.glib
+
+DBUS_NAME = 'com.legrandelectric.RemoteAccess.TundevManager'    # The name of bus we are creating in D-Bus
+DBUS_OBJECT_ROOT = '/com/legrandelectric/RemoteAccess/TundevManager'    # The root under which we will create a D-Bus object with the username of the account for the tunnelling device for D-Bus communication, eg: /com/legrandelectric/RemoteAccess/TundevManager/1000 to communicate with a TundevBinding instance running for the UNIX account 1000 (/home/1000)
+DBUS_SERVICE_INTERFACE = 'com.legrandelectric.RemoteAccess.TundevManager'    # The name of the D-Bus service under which we will perform input/output on D-Bus
 
 class TunnellingDevShell(cmd.Cmd):
     """ Tundev CLI shell offered to tunnelling devices """
@@ -19,7 +28,79 @@ class TunnellingDevShell(cmd.Cmd):
         self.prompt = self._username + '$ '
         
         self._vtun_server_tunnel = None # The vtun tunnel service
+        
+        self._dbus_loop = gobject.MainLoop()    # Get a reference to the mainloop
+        self._bus = dbus.SystemBus()    # Get a reference to the D-Bus system bus
+        dbus_manager_object = DBUS_OBJECT_ROOT
+        self._dbus_manager_proxy = self._bus.get_object(DBUS_SERVICE_INTERFACE, dbus_manager_object)
+        self._dbus_manager_iface = dbus.Interface(self._dbus_manager_proxy, DBUS_SERVICE_INTERFACE)
+        
+        self._tundevbinding_dbus_path = None
+        self._dbus_binding_proxy = None
+        self._dbus_binding_iface = None
+        
+        gobject.threads_init() # Allow the mainloop to run as an independent thread
+        dbus.mainloop.glib.threads_init()
+        
+        self._dbus_loop_thread = threading.Thread(target = self._loopHandleDbus) # Start handling D-Bus messages in a background thread
+        self._dbus_loop_thread.setDaemon(True) # D-Bus loop should be forced to terminate when main program exits
+        self._dbus_loop_thread.start()
+        self._bus.watch_name_owner(DBUS_NAME, self._handleBusOwnerChanged) # Install a callback to run when the bus owner changes
 
+    # D-Bus related methods
+    def _loopHandleDbus(self):
+        """ This method should be run within a thread... This thread's aim is to run the Glib's main loop while the main thread does other actions in the meantime
+        This methods will loop infinitely to receive and send D-Bus messages and will only stop looping when the Glib's main loop is stopped using .quit()
+        """
+        #logger.debug("Starting dbus mainloop")
+        print('Starting mainloop')
+        self._dbus_loop.run()
+        print('Stopping mainloop')
+        #logger.debug("Stopping dbus mainloop")
+        
+    def _handleBusOwnerChanged(self, new_owner):
+        """ Callback called when our D-Bus bus owner changes
+        """
+        if new_owner == '':
+            #logger.warn('No owner anymore for bus name ' + RemoteDhcpClientControl.DBUS_NAME)
+            print('Warning: lost remote D-Bus manager process', file=sys.stderr)
+            #TODO: call _exit()
+            raise Exception('LostMasterProcess')
+        else:
+            pass # Owner exists
+    
+    def _get_vtun_shell_config(self):
+        """ Retrieve from the remote TundevBindingDBusService, a tundev shell output string
+        
+        \return A list of strings containing in each entry, a line for the tundev shell output
+        """
+        
+        self._assert_registered_to_manager()
+        return self._dbus_binding_iface.GetAssociatedClientTundevShellConfig()
+    
+    def _register_binding_to_manager(self,  username, mode, shell_alive_lock_fn):
+        """ Register a this tunnelling device to the TundevManager via D-Bus
+        
+        \param username Username of the account used by the tunnelling device
+        \param mode A string containing the tunnel mode (L2, L3 etc...)
+        \param shell_alive_lock_fn Filename of a flock()'ed file. The tundev shell should flock() this file and keep it this way, which proofs that the tundev shell is still alive. We will detect if the lock falls and assume the tundevl shell is not running anymore
+
+        \return We will return the D-Bus object path for the newly instanciated binding
+        """
+        return self._dbus_manager_iface.RegisterTundevBinding(username, mode, shell_alive_lock_fn)
+
+    def _remote_vtun_server_start(self):
+        """ Request the remote TunDevManager to start the vtund server that will perform tunnelling for this tunnelling device
+        """
+        return self._dbus_binding_iface.StartTunnelServer()
+    
+    def _start_vtun_server(self):
+        """ Start the vtun service according to the remote tundev shell configuration
+        """
+        self._assert_registered_to_manager()
+        self._remote_vtun_server_start()
+    
+    # Shell commands
     def do_get_tunnel_mode(self, args):
         """Usage: get_tunnel_mode
 
@@ -51,22 +132,27 @@ Terminates this command-line session"""
         """Send EOF (^D) to terminates this command-line session"""
         return self.do_exit(args)
 
-    def _prepare_server_vtun_env(self):
-        """ Populate the attributes related to the tunnel configuration and store this into a newly instanciated self._vtun_server_tunnel """
-        temp_tundevmgr = vtun_manager.TundevManager()
-        temp_tundevmgr.register(username = self._username, shell_alive_lock_fn = '/var/lock/' + str(self._username) + '_tundev_shell.lock')
-        self._vtun_server_tunnel = temp_tundevmgr.request_new_tunnel(self._username, self.tunnel_mode)	# Temp hack to keep vtun_manager.TundevInstance in scope
+    def _register_to_manager(self):
+        """ Populate the attributes related to the tunnel configuration and store this into a newly instanciated self._vtun_server_tunnel
+        """
+        self._tundevbinding_dbus_path = self._register_binding_to_manager(self._username, self.tunnel_mode, '/var/lock/' + str(self._username) + '_tundev_shell.lock')
+        # Now create a proxy and interface to be abled to communicate with this binding
+        print('Got binding path: "' + str(self._tundevbinding_dbus_path) + '"')
+        self._dbus_binding_proxy = self._bus.get_object(DBUS_SERVICE_INTERFACE, self._tundevbinding_dbus_path)
+        self._dbus_binding_iface = dbus.Interface(self._dbus_binding_proxy, DBUS_SERVICE_INTERFACE)
 
-    def _start_vtun_server(self):
-        """ Start the vtun service according to the remote tundev shell configuration """
-        if not self._vtun_server_tunnel is None:
-            self._vtun_server_tunnel.start_vtun_server()
-        else:
-            raise Exception('CannotStartServer:TunnelNotProperlyConfigured')
+    def _assert_registered_to_manager(self):
+        """ Make sure we have already a valid registration to the manager
+        """
+        if self._tundevbinding_dbus_path is None:
+            self._register_to_manager()        
     
     def _vtun_config_to_str(self):
-        """ Dump the vtun parameters on the tunnelling dev side (client side of the tunnel) """
-        if not self._vtun_server_tunnel is None:
-            return self._vtun_server_tunnel.to_matching_client_tundev_shell_output()
-        else:
-            raise Exception('CannotGenerateClientConfigStr:TunnelNotProperlyConfigured')
+        """ Dump the vtun parameters on the tunnelling dev side (client side of the tunnel)
+        
+        \return A multi-line config used for shell output
+        """
+        return '\n'.join(self._get_vtun_shell_config())
+
+
+dbus.mainloop.glib.DBusGMainLoop(set_as_default=True) # Use Glib's mainloop as the default loop for all subsequent code
