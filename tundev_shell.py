@@ -13,6 +13,7 @@ import threading
 import gobject
 import dbus
 import dbus.mainloop.glib
+from cookielib import logger
 
 DBUS_NAME = 'com.legrandelectric.RemoteAccess.TundevManager'    # The name of bus we are creating in D-Bus
 DBUS_OBJECT_ROOT = '/com/legrandelectric/RemoteAccess/TundevManager'    # The root under which we will create a D-Bus object with the username of the account for the tunnelling device for D-Bus communication, eg: /com/legrandelectric/RemoteAccess/TundevManager/1000 to communicate with a TundevBinding instance running for the UNIX account 1000 (/home/1000)
@@ -21,10 +22,18 @@ DBUS_SERVICE_INTERFACE = 'com.legrandelectric.RemoteAccess.TundevManager'    # T
 class TunnellingDevShell(cmd.Cmd):
     """ Tundev CLI shell offered to tunnelling devices """
 
-    def __init__(self, shell_user_name):
+    def __init__(self, shell_user_name, logger):
+        """ Constructor
+        \param shell_user_name The user account we are using on the RDV server
+        \param logger A logging.Logger to use for log messages
+        """
         cmd.Cmd.__init__(self) # cmd is a Python old-style class so we cannot use super()
-        self.tunnel_mode = 'L3'
+        
+        self.tunnel_mode = 'L3' # By default, use L3 tunnel mode
+        
         self._username = shell_user_name
+        self.logger = logger
+        
         self.prompt = self._username + '$ '
         
         self._vtun_server_tunnel = None # The vtun tunnel service
@@ -52,19 +61,15 @@ class TunnellingDevShell(cmd.Cmd):
         """ This method should be run within a thread... This thread's aim is to run the Glib's main loop while the main thread does other actions in the meantime
         This methods will loop infinitely to receive and send D-Bus messages and will only stop looping when the Glib's main loop is stopped using .quit()
         """
-        #logger.debug("Starting dbus mainloop")
-        print('Starting mainloop')
+        self.logger.debug("Starting dbus mainloop")
         self._dbus_loop.run()
-        print('Stopping mainloop')
-        #logger.debug("Stopping dbus mainloop")
+        self.logger.debug("Stopping dbus mainloop")
         
     def _handleBusOwnerChanged(self, new_owner):
         """ Callback called when our D-Bus bus owner changes
         """
         if new_owner == '':
-            #logger.warn('No owner anymore for bus name ' + RemoteDhcpClientControl.DBUS_NAME)
-            print('Warning: lost remote D-Bus manager process', file=sys.stderr)
-            #TODO: call _exit()
+            self.logger.warn('Lost remote D-Bus manager process on bus name ' + DBUS_NAME)
             raise Exception('LostMasterProcess')
         else:
             pass # Owner exists
@@ -137,7 +142,7 @@ Terminates this command-line session"""
         """
         self._tundevbinding_dbus_path = self._register_binding_to_manager(self._username, self.tunnel_mode, '/var/lock/' + str(self._username) + '_tundev_shell.lock')
         # Now create a proxy and interface to be abled to communicate with this binding
-        print('Got binding path: "' + str(self._tundevbinding_dbus_path) + '"')
+        self.logger.debug('Registered to binding with D-Bus object path: "' + str(self._tundevbinding_dbus_path) + '"')
         self._dbus_binding_proxy = self._bus.get_object(DBUS_SERVICE_INTERFACE, self._tundevbinding_dbus_path)
         self._dbus_binding_iface = dbus.Interface(self._dbus_binding_proxy, DBUS_SERVICE_INTERFACE)
 

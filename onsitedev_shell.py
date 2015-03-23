@@ -12,18 +12,24 @@ import re
 import ipaddr
 import time
 
+import logging
+
 import tundev_shell
+
+progname = os.path.basename(sys.argv[0])
 
 class OnsiteDevShell(tundev_shell.TunnellingDevShell):
     """ Tundev CLI shell offered to an onsite dev """
 
     VTUN_READY_FNAME_PREFIX = "/var/run/vtun_ready-"
     
-    def __init__(self, username):
+    def __init__(self, username, logger):
         """ Constructor
         \param username The user account we are using on the RDV server
+        \param logger A logging.Logger to use for log messages
         """
-        tundev_shell.TunnellingDevShell.__init__(self, username)
+        tundev_shell.TunnellingDevShell.__init__(self, shell_user_name = username, logger = logger)    # Construct inherited TunnellingDevShell object
+        
         self.lan_ip_address = None
         self.lan_ip_prefix = None
         self.uplink_type = None
@@ -88,7 +94,27 @@ Output the parameters of the vtun tunnel to connect to the RDV server
         print(self._vtun_config_to_str())
 
 if __name__ == '__main__':
+    # Setup logging
+    logging.basicConfig()
+    
+    logger = logging.getLogger(__name__)
+    
+    logger.setLevel(logging.DEBUG)  # In debugging mode
+    #logger.setLevel(logging.WARNING)    # In production mode
+    
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s %(asctime)s %(name)s():%(lineno)d %(message)s"))
+    logger.addHandler(handler)
+    logger.propagate = False
+
+    # Find out the user account we will handle
     username = str(os.getuid())
-    onsite_dev_shell = OnsiteDevShell(username)
+    
+    logger.debug(progname + ': Starting on user account ' + username)
+
+    # Instanciate the shell
+    onsite_dev_shell = OnsiteDevShell(username = username, logger = logger)
     onsite_dev_shell.tunnel_mode = 'L3'	# FIXME: read from file (should be set by master dev shell)
+    
+    # Loop into the shell CLI parsing
     onsite_dev_shell.cmdloop()
