@@ -38,13 +38,11 @@ class TundevBinding(object):
     There should be only one instance of TundevBinding per username on the system (this is taken care for by class TundevManagerDBusService)
     """
     
-    def __init__(self, username, shell_alive_lock_fn = None):
+    def __init__(self, username):
         """ Create a new object to represent a tunnelling device from the vtun manager perspective
         \param username The username (account) of the tundev_shell that is object will be bound to
-        \param shell_alive_lock_fn A filename on which the shell has grabbed an exclusive lock. The tundev_shell will keep this filesystem lock as long as it requires the vtun tunnel to be kept up.
         """
         self.username = username
-        self.shell_lock_fn = shell_alive_lock_fn    # Fixme: start a thread that will try to grab this lock and perform tunnel cleanup if it does, or do it in configure_service()
         self.vtun_server_tunnel = None
         
         if self.username == '1000':    # For our (only) onsite RPI
@@ -123,20 +121,19 @@ class TundevBinding(object):
 class TundevBindingDBusService(TundevBinding, dbus.service.Object):
     """ Class allowing to send/receive D-Bus requests to a TundevBinding object
     """
-    def __init__(self, conn, username, dbus_object_path, shell_alive_lock_fn = None, **kwargs):
+    def __init__(self, conn, username, dbus_object_path, **kwargs):
         """ Instanciate a new TundevBindingDBusService handling the user account \p username
         \param conn A D-Bus connection object
         \param dbus_loop A main loop to use to process D-Bus request/signals
         \param dbus_object_path The path of the object to handle on D-Bus
         \param username Inherited from TundevBinding.__init__()
-        \param shell_alive_lock_fn  Inherited from TundevBinding.__init__()
         """
         # Note: **kwargs is here to make this contructor more generic (it will however force args to be named, but this is anyway good practice) and is a step towards efficient mutliple-inheritance with Python new-style-classes
         if username is None:
             raise Exception('MissingUsername')
         
         dbus.service.Object.__init__(self, conn = conn, object_path = dbus_object_path)
-        TundevBinding.__init__(self, username = username, shell_alive_lock_fn = shell_alive_lock_fn)
+        TundevBinding.__init__(self, username = username)
         
         logger.debug('Registered binding with D-Bus object PATH: ' + str(dbus_object_path))
     
@@ -182,6 +179,38 @@ class TundevBindingDBusService(TundevBinding, dbus.service.Object):
         self.remove_from_connection()   # Unregister this object
         TundevBinding.destroy(self) # Call TundevBinding's destroy
 
+class TunDevShellWatchdog(object):
+    """ Class allowing to monitor a filesystem lock and invoke a callback when the lock goes away
+    
+    This is a watchdog on a tundev shell process. When/if the tundev shell process dies, it will release a filesystem lock that we will detect here
+    """
+    
+    def __init__(self, shell_alive_lock_fn):
+        self.lock_fn = shell_alive_lock_fn
+        self._lock_fn_watchdog_thread = threading.Thread(target = self._check_lock_fn)
+        self._lock_fn_watchdog_thread.setDaemon(True) # D-Bus loop should be forced to terminate when main program exits
+        self._lock_fn_watchdog_thread.start()
+
+    def set_callback(self):
+        pass
+    
+    def _check_lock_fn(self):
+        self.lock_fn='/tmp/notlocked'
+        logger.debug('Starting shell alive watchdog on file "' + self.lock_fn + '"')
+        shell_lockfile = lockfile.FileLock(self.lock_fn)
+        shell_lockfile.acquire(timeout = None)
+        # When we get here, it means the lock was released, that is the tundev shell process exitted
+        print('tundev shell exitted')
+    
+class TundevShellBinding(object):
+    """ Class used to pack together a TundevBindingDBusService object and the corresponding filesystem lock watchdog
+    
+    Objects of this class only have attributes (there are no method): 
+    """
+    def __init__(self):
+        self.bindingService = None
+        self.shellAliveWatchdog = None
+
 class TundevManagerDBusService(dbus.service.Object):
     """ Class allowing to send D-Bus requests to a TundevManager object
     """
@@ -207,9 +236,8 @@ class TundevManagerDBusService(dbus.service.Object):
         
         \param username Username of the account used by the tunnelling device
         \param mode A string containing the tunnel mode (L2, L3 etc...)
-        \param shell_alive_lock_fn Lock filename to check that tundev shell process is alive (will be passed to the generated binding's constructor as is)
-
-        \return We will return the newly instanciated TundevBindingDBusService object path
+        \param shell_alive_lock_fn Lock filename to check that the tundev shell process that depends on this binding is still alive. This is a filename on which the shell has grabbed an exclusive OS-level lock (flock()). The tundev_shell will keep this filesystem lock as long as it requires the vtun tunnel to be kept up.
+        \return We will return the D-Bus object path for the newly instanciated binding
         """
         
         new_binding_object_path = DBUS_OBJECT_ROOT + '/' + username
@@ -219,13 +247,15 @@ class TundevManagerDBusService(dbus.service.Object):
             old_binding = self._tundev_dict.pop(username, None)
             if not old_binding is None:
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
-                old_binding.destroy()
+                old_binding.bindingService.destroy()
             
-            new_binding = TundevBindingDBusService(conn = self._conn, username = username, shell_alive_lock_fn = shell_alive_lock_fn, dbus_object_path = new_binding_object_path)
+            new_binding = TundevShellBinding()
+            new_binding.bindingService = TundevBindingDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
+            new_binding.shellAliveWatchdog = TunDevShellWatchdog(shell_alive_lock_fn)
                 
             self._tundev_dict[username] = new_binding
         
-        self._tundev_dict[username].configure_service(mode)
+        self._tundev_dict[username].bindingService.configure_service(mode)
         
         return new_binding_object_path  # Reply the full D-Bus object path of the newly generated biding to the caller
     
