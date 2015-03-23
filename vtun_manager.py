@@ -19,6 +19,8 @@ import argparse
 
 import logging
 
+import lockfile
+
 #We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
 from pythonvtunlib import vtun_tunnel
 
@@ -107,11 +109,13 @@ class TundevBinding(object):
         result += ['tunnel_secret: ' + str(matching_client_tunnel.tunnel_key)]
         return result
     
-    def __del__(self):
+    def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
+        
+        This method will not rasie exceptions
         """
-        print('Deleting binding')
         try:
+            logger.warning('Deleting binding for username ' + self.username)
             self.vtun_server_tunnel.stop()
         except:
             pass
@@ -173,6 +177,10 @@ class TundevBindingDBusService(TundevBinding, dbus.service.Object):
         
         logger.debug('/' + self.username + ' Got GetAssociatedClientTundevShellConfig() D-Bus request')
         return self.to_corresponding_client_tundev_shell_config()
+    
+    def destroy(self):
+        self.remove_from_connection()   # Unregister this object
+        TundevBinding.destroy(self) # Call TundevBinding's destroy
 
 class TundevManagerDBusService(dbus.service.Object):
     """ Class allowing to send D-Bus requests to a TundevManager object
@@ -208,9 +216,10 @@ class TundevManagerDBusService(dbus.service.Object):
         
         with self._tundev_dict_mutex:
             logger.debug('Registering binding for username ' + str(username))
-            if username in self._tundev_dict:
+            old_binding = self._tundev_dict.pop(username, None)
+            if not old_binding is None:
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
-                del self._tundev_dict[username]  # Get rid of previously existing binding object handling this username
+                old_binding.destroy()
             
             new_binding = TundevBindingDBusService(conn = self._conn, username = username, shell_alive_lock_fn = shell_alive_lock_fn, dbus_object_path = new_binding_object_path)
                 
