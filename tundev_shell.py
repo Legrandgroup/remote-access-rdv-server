@@ -35,10 +35,10 @@ class TunnellingDevShell(cmd.Cmd):
         
         self.tunnel_mode = 'L3' # By default, use L3 tunnel mode
         
-        self._username = shell_user_name
+        self.username = shell_user_name
         self.logger = logger
         
-        self.prompt = self._username + '$ '
+        self.prompt = self.username + '$ '
         
         self._vtun_server_tunnel = None # The vtun tunnel service
         
@@ -96,16 +96,13 @@ class TunnellingDevShell(cmd.Cmd):
         self._assert_registered_to_manager()
         return self._dbus_binding_iface.GetAssociatedClientTundevShellConfig()
     
-    def _register_binding_to_manager(self,  username, mode, shell_alive_lock_fn):
+    def _register_binding_to_manager(self):
         """ Register a this tunnelling device to the TundevManager via D-Bus
         
-        \param username Username of the account used by the tunnelling device
-        \param mode A string containing the tunnel mode (L2, L3 etc...)
-        \param shell_alive_lock_fn Filename of a flock()'ed file. The tundev shell should flock() this file and keep it this way, which proofs that the tundev shell is still alive. We will detect if the lock falls and assume the tundevl shell is not running anymore
-
         \return We will return the D-Bus object path for the newly instanciated binding
         """
-        return self._dbus_manager_iface.RegisterTundevBinding(username, mode, shell_alive_lock_fn)
+        
+        return self._dbus_manager_iface.RegisterTundevBinding(self.username, self.tunnel_mode, self._shell_lockfilename)
 
     def _remote_vtun_server_start(self):
         """ Request the remote TunDevManager to start the vtund server that will perform tunnelling for this tunnelling device
@@ -153,7 +150,7 @@ Terminates this command-line session"""
     def _register_to_manager(self):
         """ Populate the attributes related to the tunnel configuration and store this into a newly instanciated self._vtun_server_tunnel
         """
-        self._tundevbinding_dbus_path = self._register_binding_to_manager(self._username, self.tunnel_mode, '/var/lock/' + str(self._username) + '_tundev_shell.lock')
+        self._tundevbinding_dbus_path = self._register_binding_to_manager()
         # Now create a proxy and interface to be abled to communicate with this binding
         self.logger.debug('Registered to binding with D-Bus object path: "' + str(self._tundevbinding_dbus_path) + '"')
         self._dbus_binding_proxy = self._bus.get_object(DBUS_SERVICE_INTERFACE, self._tundevbinding_dbus_path)
