@@ -19,7 +19,9 @@ import argparse
 
 import logging
 
-import fcntl    # For lockf()
+import fcntl    # For flock()
+
+import atexit
 
 #We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
 from pythonvtunlib import vtun_tunnel
@@ -31,6 +33,31 @@ tundev_manager = None
 DBUS_NAME = 'com.legrandelectric.RemoteAccess.TundevManager'	# The name of bus we are creating in D-Bus
 DBUS_OBJECT_ROOT = '/com/legrandelectric/RemoteAccess/TundevManager'	# The root under which we will create a D-Bus object with the username of the account for the tunnelling device for D-Bus communication, eg: /com/legrandelectric/RemoteAccess/TundevManager/1000 to communicate with a TundevBinding instance running for the UNIX account 1000 (/home/1000)
 DBUS_SERVICE_INTERFACE = 'com.legrandelectric.RemoteAccess.TundevManager'	# The name of the D-Bus service under which we will perform input/output on D-Bus
+
+def cleanup_at_exit():
+    """
+    Called when this program is terminated, to release the lock
+    """
+    
+    global tundev_manager
+    
+    if tundev_manager:
+        print(progname + ': Shutting down', file=sys.stderr)   # For debug
+        tundev_manager.destroy()
+        tundev_manager = None
+
+# def signal_handler(signum, frame):
+#     """
+#     Called when receiving a UNIX signal
+#     Will only terminate if receiving a SIGINT or SIGTERM, otherwise, just ignore the signal
+#     """
+#      
+#     if signum == signal.SIGINT or signum == signal.SIGTERM:
+#         cleanup_at_exit()
+#     else:
+#         #print(progname + ': Ignoring signal ' + str(signum), file=sys.stderr)
+#         pass
+
 
 class TundevVtun(object):
     """ Class representing a vtun serving a tunnelling device connected to the RDV server
@@ -111,7 +138,7 @@ class TundevVtun(object):
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
         
-        This method will not rasie exceptions
+        This method will not raise exceptions
         """
         try:
             logger.warning('Deleting vtun serving username ' + self.username)
@@ -178,7 +205,7 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     
     def destroy(self):
         self.remove_from_connection()   # Unregister this object
-        TundevBinding.destroy(self) # Call TundevBinding's destroy
+        TundevVtun.destroy(self) # Call TundevBinding's destroy
 
 class TunDevShellWatchdog(object):
     """ Class allowing to monitor a filesystem lock and invoke a callback when the lock goes away
@@ -199,7 +226,10 @@ class TunDevShellWatchdog(object):
         
         \param unlock_callback The function to call
         """
-        self._unlock_callback = unlock_callback
+        if hasattr(unlock_callback, '__call__'):
+            self._unlock_callback = unlock_callback
+        else:
+            raise Exception('WrongCallback')
     
     def _check_lock_fn(self):
         """ Block on the file flocked() by the shell
@@ -219,6 +249,17 @@ class TunDevShellWatchdog(object):
         else:
             logger.debug('Watchdog triggered. Invoking unlock callback ' + str(self._unlock_callback))
             self._unlock_callback()
+            
+    def destroy(self):
+        """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
+        
+        This method will not raise exceptions
+        """
+        try:
+            self._unlock_callback = None    # Disable the callback
+        except:
+            pass
+        
     
 class TundevShellBinding(object):
     """ Class used to pack together a TundevBindingDBusService object and the corresponding filesystem lock watchdog
@@ -228,6 +269,19 @@ class TundevShellBinding(object):
     def __init__(self):
         self.vtunService = None
         self.shellAliveWatchdog = None
+        
+    def destroy(self):
+        """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
+        
+        This method will not raise exceptions
+        """
+        try:
+            if not self.shellAliveWatchdog is None:
+                self.shellAliveWatchdog.destroy()
+            if not self.vtunService is None:
+                self.vtunService.destroy()
+        except:
+            pass
 
 class TundevManagerDBusService(dbus.service.Object):
     """ Class allowing to send D-Bus requests to a TundevManager object
@@ -270,6 +324,7 @@ class TundevManagerDBusService(dbus.service.Object):
             new_binding = TundevShellBinding()
             new_binding.vtunService = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
             new_binding.shellAliveWatchdog = TunDevShellWatchdog(shell_alive_lock_fn)
+            new_binding.shellAliveWatchdog.set_unlock_callback(new_binding.vtunService.destroy)
                 
             self._tundev_dict[username] = new_binding
         
@@ -289,11 +344,27 @@ class TundevManagerDBusService(dbus.service.Object):
         
         return map( lambda p: DBUS_OBJECT_ROOT + '/' + p, tundev_bindings_username_list)
 
+    def destroy(self):
+        """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
+        
+        This method will not raise exceptions
+        """
+        try:
+            logger.warning('Deleting all bindings')
+            with self._tundev_dict_mutex:
+                for (key, val) in self._tundev_dict.iteritems():
+                    logger.warning('Deleting binding for username ' + str(key))
+                    val.destroy()   # Destroy all bindings
+                self._tundev_dict.clear() # Wipe out the content of the dict
+        except:
+            pass
 
+
+# Main program
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True) # Use Glib's mainloop as the default loop for all subsequent code
 
 if __name__ == '__main__':
-    #atexit.register(cleanupAtExit)
+    atexit.register(cleanup_at_exit)
     
     # Parse arguments
     parser = argparse.ArgumentParser(description="This program launches a vtun manager daemon. \
@@ -321,7 +392,6 @@ It will also connects onsite to master tunnels to create an end-to-end session",
 
     # Prepare D-Bus environment
     system_bus = dbus.SystemBus(private=True)
-
     
     name = dbus.service.BusName(DBUS_NAME, system_bus) # Publish the name to the D-Bus so that clients can see us
     #signal.signal(signal.SIGINT, signal_handler) # Install a cleanup handler on SIGINT and SIGTERM
