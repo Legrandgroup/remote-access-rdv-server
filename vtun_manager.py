@@ -19,7 +19,7 @@ import argparse
 
 import logging
 
-import lockfile
+import fcntl    # For lockf()
 
 #We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
 from pythonvtunlib import vtun_tunnel
@@ -195,12 +195,11 @@ class TunDevShellWatchdog(object):
         pass
     
     def _check_lock_fn(self):
-        self.lock_fn='/tmp/notlocked'
         logger.debug('Starting shell alive watchdog on file "' + self.lock_fn + '"')
-        shell_lockfile = lockfile.FileLock(self.lock_fn)
-        shell_lockfile.acquire(timeout = None)
+        shell_lockfile_fd = open(self.lock_fn, 'r')
+        fcntl.flock(shell_lockfile_fd, fcntl.LOCK_EX)
+        logger.warning('tundev shell exitted')
         # When we get here, it means the lock was released, that is the tundev shell process exitted
-        print('tundev shell exitted')
     
 class TundevShellBinding(object):
     """ Class used to pack together a TundevBindingDBusService object and the corresponding filesystem lock watchdog

@@ -14,7 +14,7 @@ import gobject
 import dbus
 import dbus.mainloop.glib
 
-import lockfile
+import fcntl    # For lockf()
 
 import logging
 
@@ -62,12 +62,14 @@ class TunnellingDevShell(cmd.Cmd):
         
         if not lockfilename is None:
             self._shell_lockfilename = lockfilename
-            self._shell_lockfile = lockfile.FileLock(self._shell_lockfilename)
+            self._shell_lockfile_fd = open(self._shell_lockfilename, 'w')
             try:
-                self.logger.debug('Acquiring lock on ' + lockfilename + '.lock')
-                self._shell_lockfile.acquire(timeout = 0)
-            except:
+                self.logger.debug('Acquiring lock on ' + lockfilename)
+                fcntl.flock(self._shell_lockfile_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except IOError:
                 raise Exception('CannotGetLockfile')
+            print(str(os.getpid()), file=self._shell_lockfile_fd)
+            print(self.username, file=self._shell_lockfile_fd)
         
     # D-Bus related methods
     def _loopHandleDbus(self):
