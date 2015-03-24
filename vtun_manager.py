@@ -183,6 +183,7 @@ class TunDevShellWatchdog(object):
     """ Class allowing to monitor a filesystem lock and invoke a callback when the lock goes away
     
     This is a watchdog on a tundev shell process. When/if the tundev shell process dies, it will release a filesystem lock that we will detect here
+    The callback method to be called is provided using method set_unlock_callback() below
     """
     
     def __init__(self, shell_alive_lock_fn):
@@ -190,16 +191,31 @@ class TunDevShellWatchdog(object):
         self._lock_fn_watchdog_thread = threading.Thread(target = self._check_lock_fn)
         self._lock_fn_watchdog_thread.setDaemon(True) # D-Bus loop should be forced to terminate when main program exits
         self._lock_fn_watchdog_thread.start()
+        self._unlock_callback = None
 
-    def set_callback(self):
-        pass
+    def set_unlock_callback(self, unlock_callback):
+        """ Set the function that will be called when the watchdog triggers
+        
+        \param unlock_callback The function to call
+        """
+        self._unlock_callback = unlock_callback
     
     def _check_lock_fn(self):
+        """ Block on the file flocked() by the shell
+        
+        This method will perform the actual watchdog function (it is blocking and thus must be run inide a separate thread).
+        It will only finish if the lock is lost, we will then call the callback function set with set_unlock_callback()
+        """
         logger.debug('Starting shell alive watchdog on file "' + self.lock_fn + '"')
         shell_lockfile_fd = open(self.lock_fn, 'r')
         fcntl.flock(shell_lockfile_fd, fcntl.LOCK_EX)
-        logger.warning('tundev shell exitted')
+        logger.warning('Tundev shell exitted (lock file "' + self.lock_fn + '" was released')
         # When we get here, it means the lock was released, that is the tundev shell process exitted
+        if self._unlock_callback is None:
+            logger.debug('Watchdog triggered but will be ignored because no unlock callback was setup')
+        else:
+            logger.debug('Watchdog triggered. Invoking unlock callback ' + str(self._unlock_callback))
+            self._unlock_callback()
     
 class TundevShellBinding(object):
     """ Class used to pack together a TundevBindingDBusService object and the corresponding filesystem lock watchdog
