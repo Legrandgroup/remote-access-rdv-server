@@ -32,14 +32,15 @@ DBUS_NAME = 'com.legrandelectric.RemoteAccess.TundevManager'	# The name of bus w
 DBUS_OBJECT_ROOT = '/com/legrandelectric/RemoteAccess/TundevManager'	# The root under which we will create a D-Bus object with the username of the account for the tunnelling device for D-Bus communication, eg: /com/legrandelectric/RemoteAccess/TundevManager/1000 to communicate with a TundevBinding instance running for the UNIX account 1000 (/home/1000)
 DBUS_SERVICE_INTERFACE = 'com.legrandelectric.RemoteAccess.TundevManager'	# The name of the D-Bus service under which we will perform input/output on D-Bus
 
-class TundevBinding(object):
-    """ Class representing a tunnelling dev connected to the RDV server
+class TundevVtun(object):
+    """ Class representing a vtun serving a tunnelling device connected to the RDV server
     Among other, it will make sure the life cycle of the vtun tunnels are handled in a centralised way
-    There should be only one instance of TundevBinding per username on the system (this is taken care for by class TundevManagerDBusService)
+    There should be only one instance of TundevVtun per username on the system (this is taken care for by class TundevManagerDBusService)
     """
     
     def __init__(self, username):
         """ Create a new object to represent a tunnelling device from the vtun manager perspective
+        
         \param username The username (account) of the tundev_shell that is object will be bound to
         """
         self.username = username
@@ -113,16 +114,16 @@ class TundevBinding(object):
         This method will not rasie exceptions
         """
         try:
-            logger.warning('Deleting binding for username ' + self.username)
+            logger.warning('Deleting vtun serving username ' + self.username)
             self.vtun_server_tunnel.stop()
         except:
             pass
 
-class TundevBindingDBusService(TundevBinding, dbus.service.Object):
-    """ Class allowing to send/receive D-Bus requests to a TundevBinding object
+class TundevVtunDBusService(TundevVtun, dbus.service.Object):
+    """ Class allowing to send/receive D-Bus requests to a TundevVtun object
     """
     def __init__(self, conn, username, dbus_object_path, **kwargs):
-        """ Instanciate a new TundevBindingDBusService handling the user account \p username
+        """ Instanciate a new TundevVtunDBusService handling the user account \p username
         \param conn A D-Bus connection object
         \param dbus_loop A main loop to use to process D-Bus request/signals
         \param dbus_object_path The path of the object to handle on D-Bus
@@ -133,7 +134,7 @@ class TundevBindingDBusService(TundevBinding, dbus.service.Object):
             raise Exception('MissingUsername')
         
         dbus.service.Object.__init__(self, conn = conn, object_path = dbus_object_path)
-        TundevBinding.__init__(self, username = username)
+        TundevVtun.__init__(self, username = username)
         
         logger.debug('Registered binding with D-Bus object PATH: ' + str(dbus_object_path))
     
@@ -209,6 +210,8 @@ class TunDevShellWatchdog(object):
         logger.debug('Starting shell alive watchdog on file "' + self.lock_fn + '"')
         shell_lockfile_fd = open(self.lock_fn, 'r')
         fcntl.flock(shell_lockfile_fd, fcntl.LOCK_EX)
+        # Lionel: FIXME: the watchdog is not triggered immediately... this is probably because of the glib's mainloop
+        # We only get the notification for the watchdog at the next D-Bus request...
         logger.warning('Tundev shell exitted (lock file "' + self.lock_fn + '" was released')
         # When we get here, it means the lock was released, that is the tundev shell process exitted
         if self._unlock_callback is None:
@@ -223,7 +226,7 @@ class TundevShellBinding(object):
     Objects of this class only have attributes (there are no method): 
     """
     def __init__(self):
-        self.bindingService = None
+        self.vtunService = None
         self.shellAliveWatchdog = None
 
 class TundevManagerDBusService(dbus.service.Object):
@@ -247,7 +250,7 @@ class TundevManagerDBusService(dbus.service.Object):
 
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sss', out_signature='s')
     def RegisterTundevBinding(self, username, mode, shell_alive_lock_fn):
-        """ Register a new tunnelling device to the TundevManager
+        """ Register a new tunnelling device to the TundevManagerDBusService
         
         \param username Username of the account used by the tunnelling device
         \param mode A string containing the tunnel mode (L2, L3 etc...)
@@ -265,12 +268,12 @@ class TundevManagerDBusService(dbus.service.Object):
                 old_binding.bindingService.destroy()
             
             new_binding = TundevShellBinding()
-            new_binding.bindingService = TundevBindingDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
+            new_binding.vtunService = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
             new_binding.shellAliveWatchdog = TunDevShellWatchdog(shell_alive_lock_fn)
                 
             self._tundev_dict[username] = new_binding
         
-        self._tundev_dict[username].bindingService.configure_service(mode)
+        self._tundev_dict[username].vtunService.configure_service(mode)
         
         return new_binding_object_path  # Reply the full D-Bus object path of the newly generated biding to the caller
     
