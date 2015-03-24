@@ -321,12 +321,16 @@ It will also connects onsite to master tunnels to create an end-to-end session",
 
     # Prepare D-Bus environment
     system_bus = dbus.SystemBus(private=True)
-# Probably not required
-#    gobject.threads_init() # Allow the mainloop to run as an independent thread
-#    dbus.mainloop.glib.threads_init()
+
+    
     name = dbus.service.BusName(DBUS_NAME, system_bus) # Publish the name to the D-Bus so that clients can see us
-    #signal.signal(signal.SIGINT, signalHandler) # Install a cleanup handler on SIGINT and SIGTERM
-    #signal.signal(signal.SIGTERM, signalHandler)
+    #signal.signal(signal.SIGINT, signal_handler) # Install a cleanup handler on SIGINT and SIGTERM
+    #signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Allow secondary threads to run during the mainloop (required for class TunDevShellWatchdog to trigger the watchdog immediately)
+    gobject.threads_init() # Allow the mainloop to run as an independent thread
+    dbus.mainloop.glib.threads_init()
+    
     dbus_loop = gobject.MainLoop()
     
     # Instanciate a TundevManagerDBusService
