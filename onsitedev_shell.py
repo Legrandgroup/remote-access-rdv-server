@@ -100,8 +100,10 @@ Wait until the RDV server is ready to accept a new vtun session.
 
 Output the readiness status of the RDV server, possible return values are "ready", "not_ready"
 """
+        # Lionel: FIXME: implement something better than a file polling, something like a flock maybe?
+        # But we need to make sure that this type of even can be generated from vtun's up { } command 
         timeout = 60    # 60s
-        vtun_check_fname = OnsiteDevShell.VTUN_READY_FNAME_PREFIX + self._username
+        vtun_check_fname = OnsiteDevShell.VTUN_READY_FNAME_PREFIX + self.username
         print('Checking "%s"' % (vtun_check_fname))
         while timeout>0:
             if os.path.isfile(vtun_check_fname):
@@ -118,7 +120,7 @@ Output the readiness status of the RDV server, possible return values are "ready
 Output the parameters of the vtun tunnel to connect to the RDV server
 """
         
-        self._start_vtun_server()
+        self._start_remote_vtun_server()
         print(self._vtun_config_to_str())
 
 if __name__ == '__main__':

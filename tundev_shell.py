@@ -98,24 +98,43 @@ class TunnellingDevShell(cmd.Cmd):
         self._assert_registered_to_manager()
         return self._dbus_binding_iface.GetAssociatedClientTundevShellConfig()
     
-    def _register_binding_to_manager(self):
-        """ Register a this tunnelling device to the TundevManager via D-Bus
+    def _register_to_manager(self):
+        """ Register to the manager, we will then have a binding allocated for our shell on the manager
         
-        \return We will return the D-Bus object path for the newly instanciated binding
+        Create a new D-Bus interface object to talk to the newly instanciated binding and store it into self._dbus_binding_iface
         """
-        
-        return self._dbus_manager_iface.RegisterTundevBinding(self.username, self.tunnel_mode, self._shell_lockfilename)
+        self._tundevbinding_dbus_path = self._dbus_manager_iface.RegisterTundevBinding(self.username, self.tunnel_mode, self._shell_lockfilename)
+        # Now create a proxy and interface to be abled to communicate with this binding
+        self.logger.debug('Registered to binding with D-Bus object path: "' + str(self._tundevbinding_dbus_path) + '"')
+        self._dbus_binding_proxy = self._bus.get_object(DBUS_SERVICE_INTERFACE, self._tundevbinding_dbus_path)
+        self._dbus_binding_iface = dbus.Interface(self._dbus_binding_proxy, DBUS_SERVICE_INTERFACE)
 
-    def _remote_vtun_server_start(self):
+    def _is_registered_on_manager(self):
+        """ Check if we already have a binding allocated to us on the manager
+        
+        \return True if there is a binding allocated to us on the manager 
+        """
+        return not self._tundevbinding_dbus_path is None
+    
+    def _assert_registered_to_manager(self):
+        """ Make sure we have already a valid registration to the manager
+        """
+        if not self._is_registered_on_manager():
+            self._register_to_manager()        
+
+    def _stop_remote_vtun_server(self):
+        """ Request the remote TunDevManager to stop the vtund server that handles the tunnelling for this tunnelling device
+        
+        Note: we will not do anything is there is no binding allocated to us on the manager
+        """
+        if self._is_registered_on_manager():    # Only request the stop if there is already a binding allocated to us
+            self._dbus_binding_iface.StopTunnelServer()
+    
+    def _start_remote_vtun_server(self):
         """ Request the remote TunDevManager to start the vtund server that will perform tunnelling for this tunnelling device
         """
-        return self._dbus_binding_iface.StartTunnelServer()
-    
-    def _start_vtun_server(self):
-        """ Start the vtun service according to the remote tundev shell configuration
-        """
         self._assert_registered_to_manager()
-        self._remote_vtun_server_start()
+        self._dbus_binding_iface.StartTunnelServer()
     
     # Shell commands
     def do_get_tunnel_mode(self, args):
@@ -133,6 +152,13 @@ Get the current tunnel mode"""
 Echo the string provided as parameter back to the console"""
         print(command)
 
+    def do_drop_vtun(self, command):
+        """Usage: drop_vtun
+
+Asks the RDV server to drop the vtun tunnel to the tunnelling dev executing this command"""
+        
+        self._stop_remote_vtun_server()
+         
     def do_exit(self, args):
         """Usage: exit
 
@@ -148,21 +174,6 @@ Terminates this command-line session"""
     def do_EOF(self, args):
         """Send EOF (^D) to terminates this command-line session"""
         return self.do_exit(args)
-
-    def _register_to_manager(self):
-        """ Populate the attributes related to the tunnel configuration and store this into a newly instanciated self._vtun_server_tunnel
-        """
-        self._tundevbinding_dbus_path = self._register_binding_to_manager()
-        # Now create a proxy and interface to be abled to communicate with this binding
-        self.logger.debug('Registered to binding with D-Bus object path: "' + str(self._tundevbinding_dbus_path) + '"')
-        self._dbus_binding_proxy = self._bus.get_object(DBUS_SERVICE_INTERFACE, self._tundevbinding_dbus_path)
-        self._dbus_binding_iface = dbus.Interface(self._dbus_binding_proxy, DBUS_SERVICE_INTERFACE)
-
-    def _assert_registered_to_manager(self):
-        """ Make sure we have already a valid registration to the manager
-        """
-        if self._tundevbinding_dbus_path is None:
-            self._register_to_manager()        
     
     def _vtun_config_to_str(self):
         """ Dump the vtun parameters on the tunnelling dev side (client side of the tunnel)
