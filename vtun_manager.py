@@ -24,7 +24,8 @@ import fcntl    # For flock()
 import atexit
 
 #We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
-from pythonvtunlib import vtun_tunnel
+from pythonvtunlib import server_vtun_tunnel
+from pythonvtunlib import client_vtun_tunnel
 
 progname = os.path.basename(sys.argv[0])
 
@@ -87,12 +88,12 @@ class TundevVtun(object):
         """
         
         if self.tundev_role == 'onsite':    # For our (only) onsite RPI
-            self.vtun_server_tunnel = vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000)
+            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
             self.vtun_server_tunnel.set_shared_secret(self.username)
             self.vtun_server_tunnel.set_tunnel_name('tundev' + self.username)
         elif self.tundev_role == 'master':    # For our (only) master RPI
-            self.vtun_server_tunnel = vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001)
+            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
             self.vtun_server_tunnel.set_shared_secret(self.username)
             self.vtun_server_tunnel.set_tunnel_name('tundev' + self.username)
@@ -120,7 +121,7 @@ class TundevVtun(object):
         
         \return A list of strings containing in each entry, a line for the tundev shell output
         """
-        matching_client_tunnel = vtun_tunnel.ClientVtunTunnel(from_server = self.vtun_server_tunnel)
+        matching_client_tunnel = client_vtun_tunnel.ClientVtunTunnel(from_server = self.vtun_server_tunnel)
         # In shell output, we actually do not specify the vtun_server_hostname, because it is assumed to be tunnelled inside ssh (it is thus localhost)
         result = []
         result += ['tunnel_ip_network: ' + str(matching_client_tunnel.tunnel_ip_network.network)]
