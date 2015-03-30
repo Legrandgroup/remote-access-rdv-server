@@ -87,16 +87,14 @@ class TundevVtun(object):
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
         """
         
+        vtun_tunnel_name = 'tundev' + self.username
+        vtun_shared_secret = '_' + self.username
         if self.tundev_role == 'onsite':    # For our (only) onsite RPI
-            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000)
+            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
-            self.vtun_server_tunnel.set_shared_secret(self.username)
-            self.vtun_server_tunnel.set_tunnel_name('tundev' + self.username)
         elif self.tundev_role == 'master':    # For our (only) master RPI
-            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001)
+            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
-            self.vtun_server_tunnel.set_shared_secret(self.username)
-            self.vtun_server_tunnel.set_tunnel_name('tundev' + self.username)
 
     def start_vtun_server(self):
         """ Start a vtund server to handle connectivity with this tunnelling device
@@ -320,7 +318,7 @@ class TundevManagerDBusService(dbus.service.Object):
             old_binding = self._tundev_dict.pop(username, None)
             if not old_binding is None:
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
-                old_binding.bindingService.destroy()
+                old_binding.destroy()
             
             new_binding = TundevShellBinding()
             new_binding.vtunService = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
