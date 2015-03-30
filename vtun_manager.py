@@ -131,7 +131,7 @@ class TundevVtun(object):
             raise Exception('TcpPortCannotBeNone')
         else:
             result += ['rdv_server_vtun_tcp_port: ' + str(matching_client_tunnel.vtun_server_tcp_port)]
-        result += ['tunnel_secret: ' + str(matching_client_tunnel.tunnel_key)]
+        result += ['tunnel_secret: ' + str(matching_client_tunnel.get_shared_secret())]
         return result
     
     def destroy(self):
