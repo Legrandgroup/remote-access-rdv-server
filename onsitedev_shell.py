@@ -30,7 +30,7 @@ def cleanup_at_exit():
     
     if lockfilename:
         os.remove(lockfilename)
-        print('Releasing lock file at exit', file=sys.stderr)   # For debug
+        #print('Releasing lock file at exit', file=sys.stderr)   # For debug
         lockfilename = None
 
 # def signal_handler(signum, frame):
