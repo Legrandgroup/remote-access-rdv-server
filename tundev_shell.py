@@ -158,7 +158,18 @@ Echo the string provided as parameter back to the console"""
 Asks the RDV server to drop the vtun tunnel to the tunnelling dev executing this command"""
         
         self._stop_remote_vtun_server()
-         
+    
+    def do_debug_mode(self, args):
+        """Usage: debug_mode {on|off}
+
+Switch/exit debug mode (outputs much more feedback on the console in debug mode (debug level rather than warning level))"""
+        if args == 'on':
+            self.logger.setLevel(logging.DEBUG)
+        elif args == 'off':
+            self.logger.setLevel(logging.WARNING)
+        else:
+            print('Unsupported debug mode: ' + args, file=sys.stderr)
+
     def do_exit(self, args):
         """Usage: exit
 

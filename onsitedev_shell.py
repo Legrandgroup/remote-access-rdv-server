@@ -129,8 +129,7 @@ if __name__ == '__main__':
     
     logger = logging.getLogger(__name__)
     
-    logger.setLevel(logging.DEBUG)  # In debugging mode
-    #logger.setLevel(logging.WARNING)    # In production mode
+    logger.setLevel(logging.WARNING)    # In production mode
     
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(levelname)s %(asctime)s %(name)s():%(lineno)d %(message)s"))
