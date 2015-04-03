@@ -58,8 +58,6 @@ class OnsiteDevShell(tundev_shell.TunnellingDevShell):
         """
         tundev_shell.TunnellingDevShell.__init__(self, shell_user_name = username, logger = logger, lockfilename = lockfilename)    # Construct inherited TunnellingDevShell object
         
-        self.lan_ip_address = None
-        self.lan_ip_prefix = None
         self.uplink_type = None
 
     # Only for master dev=>move to masterdev_shell.py
@@ -68,19 +66,6 @@ class OnsiteDevShell(tundev_shell.TunnellingDevShell):
         #~ Valid modes are L2, L3, L3_multi
         #~ """
         #~ self._tunnel_mode = args
-
-    def do_set_tunnelling_dev_lan_ip_address(self, args):
-        """Usage: set_tunnelling_dev_lan_ip_address {address}
-
-Publish the LAN IP address of the tunnelling dev
-Argument address should contain the IP address and the CIDR prefix separated by a character '/'
-eg: "192.168.1.2/24\""""
-        try:
-            ipv4 = ipaddr.IPv4Network(args)
-            self.lan_ip_address = ipv4.ip
-            self.lan_ip_prefix = ipv4._prefixlen
-        except ValueError:
-            print('Invalid IP network: ' + args, file=sys.stderr)
 
     def do_set_tunnelling_dev_uplink_type(self, args):
         """Usage: set_tunnelling_dev_uplink_type {type}

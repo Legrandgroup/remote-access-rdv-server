@@ -302,12 +302,13 @@ class TundevManagerDBusService(dbus.service.Object):
         self._tundev_dict = {}    # Initialise with an empty TunDevBinding dict
         self._tundev_dict_mutex = threading.Lock() # This mutex protects writes and reads to the _tundev_dict attribute
 
-    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sss', out_signature='s')
-    def RegisterTundevBinding(self, username, mode, shell_alive_lock_fn):
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ssss', out_signature='s')
+    def RegisterTundevBinding(self, username, mode, uplink_ip, shell_alive_lock_fn):
         """ Register a new tunnelling device to the TundevManagerDBusService
         
         \param username Username of the account used by the tunnelling device
         \param mode A string containing the tunnel mode (L2, L3 etc...)
+	\param uplink_ip The IP on the uplink interface of the tundev
         \param shell_alive_lock_fn Lock filename to check that the tundev shell process that depends on this binding is still alive. This is a filename on which the shell has grabbed an exclusive OS-level lock (flock()). The tundev_shell will keep this filesystem lock as long as it requires the vtun tunnel to be kept up.
         \return We will return the D-Bus object path for the newly instanciated binding
         """
@@ -328,9 +329,9 @@ class TundevManagerDBusService(dbus.service.Object):
                 
             self._tundev_dict[username] = new_binding
         
-        self._tundev_dict[username].vtunService.configure_service(mode)
+        self._tundev_dict[username].vtunService.configure_service(mode, uplink_ip)
         
-        return new_binding_object_path  # Reply the full D-Bus object path of the newly generated biding to the caller
+	return new_binding_object_path  # Reply the full D-Bus object path of the newly generated biding to the caller
     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpTundevBindings(self):
