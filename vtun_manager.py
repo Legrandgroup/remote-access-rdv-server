@@ -81,10 +81,11 @@ class TundevVtun(object):
         else:
             raise Exception('UnknownTundevAccount:' + str(self.username))
 
-    def configure_service(self, mode):
+    def configure_service(self, mode, uplink_ip):
         """ Configure a tunnel server to handle connectivity with this tunnelling device
         
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
+	\param uplink_ip The IP on the uplink interface of the tundev
         """
         
         vtun_tunnel_name = 'tundev' + self.username
@@ -165,14 +166,14 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
         logger.debug('Registered binding with D-Bus object PATH: ' + str(dbus_object_path))
     
     # D-Bus-related methods
-    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='')
-    def ConfigureService(self, mode):
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ss', out_signature='')
+    def ConfigureService(self, mode, uplink_ip):
         """ Configure a tunnel server to handle connectivity with this tunnelling device
-        
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
+	\param uplink_ip The IP on the uplink interface of the tundev
         """
-        logger.debug('/' + self.username + ' Got ConfigureService(' + str(mode) + ') D-Bus request')
-        self.configure_service(mode)
+        logger.debug('/' + self.username + ' Got ConfigureService(' + str(mode) +','+ str(uplink_ip) + ') D-Bus request')
+        self.configure_service(mode, uplink_ip)
         
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='')
     def StartTunnelServer(self):
