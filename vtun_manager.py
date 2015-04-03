@@ -66,6 +66,8 @@ class TundevVtun(object):
     There should be only one instance of TundevVtun per username on the system (this is taken care for by class TundevManagerDBusService)
     """
     
+    VTUND_EXEC = '/usr/local/sbin/vtund'
+    
     def __init__(self, username):
         """ Create a new object to represent a tunnelling device from the vtun manager perspective
         
@@ -85,16 +87,16 @@ class TundevVtun(object):
         """ Configure a tunnel server to handle connectivity with this tunnelling device
         
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
-	\param uplink_ip The IP on the uplink interface of the tundev
+        \param uplink_ip The IP on the uplink interface of the tundev
         """
         
         vtun_tunnel_name = 'tundev' + self.username
         vtun_shared_secret = '_' + self.username
         if self.tundev_role == 'onsite':    # For our (only) onsite RPI
-            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
+            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
         elif self.tundev_role == 'master':    # For our (only) master RPI
-            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
+            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
 
     def start_vtun_server(self):
