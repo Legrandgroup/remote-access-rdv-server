@@ -4,13 +4,16 @@
 
 from __future__ import print_function
 
-import cmd
 import os
 import os.path
 import sys
 import re
 import ipaddr
 import time
+
+import getpass
+
+import cmd
 
 import logging
 
@@ -122,7 +125,7 @@ if __name__ == '__main__':
     logger.propagate = False
 
     # Find out the user account we will handle
-    username = str(os.getuid())
+    username = getpass.getuser()
     
     logger.debug(progname + ': Starting on user account ' + username)
 
