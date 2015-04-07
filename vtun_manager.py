@@ -76,9 +76,9 @@ class TundevVtun(object):
         self.username = username
         self.vtun_server_tunnel = None
         
-        if self.username == '1000':    # For our (only) onsite RPI
+        if self.username == 'rpi1000' or self.username == 'rpi1002':    # For our (only) onsite RPI
             self.tundev_role = 'onsite'
-        elif self.username == '1001':    # For our (only) master RPI
+        elif self.username == 'rpi1001':    # For our (only) master RPI
             self.tundev_role = 'master'
         else:
             raise Exception('UnknownTundevAccount:' + str(self.username))
