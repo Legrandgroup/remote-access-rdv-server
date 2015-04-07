@@ -93,6 +93,7 @@ Wait until the RDV server is ready to accept a new vtun session.
 
 Output the readiness status of the RDV server, possible return values are "ready", "not_ready"
 """
+        self._assert_registered_to_manager()
         # Lionel: FIXME: implement something better than a file polling, something like a flock maybe?
         # But we need to make sure that this type of event can be generated from commands in vtund's up block
         timeout = 60
@@ -100,11 +101,13 @@ Output the readiness status of the RDV server, possible return values are "ready
         event.clear()
         
         def VtunAllowedHandler():
-            print('Signal VtunAllowed received')
             event.set()
         
-        obj = self._bus.get_object(DBUS_SERVICE_INTERFACE, DBUS_OBJECT_ROOT + str(self.username))
-        obj.connect_to_signal("VtunAllowedSignal", VtunAllowedHandler,dbus_interface=DBUS_SERVICE_INTERFACE)
+        try:
+            obj = self._bus.get_object(DBUS_SERVICE_INTERFACE, DBUS_OBJECT_ROOT + '/' + str(self.username))
+            obj.connect_to_signal("VtunAllowedSignal", VtunAllowedHandler,dbus_interface=DBUS_SERVICE_INTERFACE)
+        except dbus.DBusException:
+            traceback.print_exc()
         
         event.wait(timeout)
         if not event.is_set():
