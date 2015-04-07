@@ -96,6 +96,10 @@ Output the readiness status of the RDV server, possible return values are "ready
         self._assert_registered_to_manager()
         # Lionel: FIXME: implement something better than a file polling, something like a flock maybe?
         # But we need to make sure that this type of event can be generated from commands in vtund's up block
+        #FIXME: Temporary fix for lack of client selection from master dev shell.
+        print('ready')
+        return False
+        
         timeout = 60
         event =threading.Event()
         event.clear()
