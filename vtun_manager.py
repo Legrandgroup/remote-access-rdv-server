@@ -205,6 +205,12 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
         logger.debug('/' + self.username + ' Got GetAssociatedClientTundevShellConfig() D-Bus request')
         return self.to_corresponding_client_tundev_shell_config()
     
+    @dbus.service.signal(dbus_interface= DBUS_SERVICE_INTERFACE, signature='')
+    def VtunAllowedSignal(self):
+	     # The signal is emitted when this method exits
+	     # You can have code here if you wish
+	pass
+    
     def destroy(self):
         self.remove_from_connection()   # Unregister this object
         TundevVtun.destroy(self) # Call TundevBinding's destroy

@@ -21,6 +21,11 @@ import tundev_shell
 
 import atexit
 
+import threading
+
+DBUS_OBJECT_ROOT = '/com/legrandelectric/RemoteAccess/TundevManager'    # The root under which we will create a D-Bus object with the username of the account for the tunnelling device for D-Bus communication, eg: /com/legrandelectric/RemoteAccess/TundevManager/1000 to communicate with a TundevBinding instance running for the UNIX account 1000 (/home/1000)
+DBUS_SERVICE_INTERFACE = 'com.legrandelectric.RemoteAccess.TundevManager'    # The name of the D-Bus service under which we will perform input/output on D-Bus
+
 progname = os.path.basename(sys.argv[0])
 lockfilename = None
 
@@ -90,17 +95,34 @@ Output the readiness status of the RDV server, possible return values are "ready
 """
         # Lionel: FIXME: implement something better than a file polling, something like a flock maybe?
         # But we need to make sure that this type of event can be generated from commands in vtund's up block
-        timeout = 60    # 60s
-        vtun_check_fname = OnsiteDevShell.VTUN_READY_FNAME_PREFIX + self.username
-        print('Checking "%s"' % (vtun_check_fname))
-        while timeout>0:
-            if os.path.isfile(vtun_check_fname):
-                print('ready')
-                return False
-            else:
-                time.sleep(1)
-                timeout -= 1
-        print('not_ready', file=sys.stderr)
+        timeout = 60
+        event =threading.Event()
+        event.clear()
+        
+        def VtunAllowedHandler():
+            print('Signal VtunAllowed received')
+            event.set()
+        
+        obj = self._bus.get_object(DBUS_SERVICE_INTERFACE, DBUS_OBJECT_ROOT + str(self.username))
+        obj.connect_to_signal("VtunAllowedSignal", VtunAllowedHandler,dbus_interface=DBUS_SERVICE_INTERFACE)
+        
+        event.wait(timeout)
+        if not event.is_set():
+            print('not_ready', file=sys.stderr)
+        else:
+            print('ready')
+            return False
+        #timeout = 60    # 60s
+        #vtun_check_fname = OnsiteDevShell.VTUN_READY_FNAME_PREFIX + self.username
+        #print('Checking "%s"' % (vtun_check_fname))
+        #while timeout>0:
+        #    if os.path.isfile(vtun_check_fname):
+        #        print('ready')
+        #        return False
+        #    else:
+        #        time.sleep(1)
+        #        timeout -= 1
+        #print('not_ready', file=sys.stderr)
     
     def do_get_vtun_parameters(self, args):
         """Usage: get_vtun_parameters
