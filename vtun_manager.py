@@ -360,6 +360,20 @@ class TundevManagerDBusService(dbus.service.Object):
         
         return map( lambda p: DBUS_OBJECT_ROOT + '/' + p, tundev_bindings_username_list)
 
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
+    def GetOnlineOnsiteDevs(self):
+        """ List all online onsite devices ids
+        
+        \return We will return an array of online onsite devices ids
+        """
+        
+        online_onsite_devs_list = []
+        with self._tundev_dict_mutex:
+            for dev in self._tundev_dict.values():
+                if dev.vtunService.tundev_role == 'onsite':
+                    online_onsite_devs_list += [dev.vtunService.username]
+        return online_onsite_devs_list
+
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
         
