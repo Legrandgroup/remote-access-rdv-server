@@ -81,6 +81,13 @@ Output the parameters of the vtun tunnel to connect to the RDV server
         
         self._start_remote_vtun_server()
         print(self._vtun_config_to_str())
+        
+    def do_show_online_onsite_devs(self, args):
+        """Usage: show_online_onsite_devs
+        Lists all onsite devices connected
+        """
+        for dev in self._dbus_manager_iface.DumpTundevBindings():
+            print(dev.replace(DBUS_OBJECT_ROOT + '/', ''))
 
 if __name__ == '__main__':
     # Setup logging
