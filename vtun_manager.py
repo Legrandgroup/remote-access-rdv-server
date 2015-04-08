@@ -348,19 +348,6 @@ class TundevManagerDBusService(dbus.service.Object):
         
         return new_binding_object_path  # Reply the full D-Bus object path of the newly generated biding to the caller
         
-        
-    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='b')
-    def IsRegisteredTundevBinding(self, username):
-        """ Register a new tunnelling device to the TundevManagerDBusService
-        
-        \param username Username of the account used by the tunnelling device
-        """
-        
-        with self._tundev_dict_mutex:
-            logger.debug('Checing register status binding for username ' + str(username))
-            
-            return self._tundev_dict.has_key(username)
-    
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='')
     def UnregisterTundevBinding(self, username):
         """ Register a new tunnelling device to the TundevManagerDBusService
@@ -370,8 +357,10 @@ class TundevManagerDBusService(dbus.service.Object):
         
         with self._tundev_dict_mutex:
             logger.debug('Unregistering binding for username ' + str(username))
-            
-            del self._tundev_dict[username]
+            try:
+                del self._tundev_dict[username]
+            except:
+                pass
     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpTundevBindings(self):
