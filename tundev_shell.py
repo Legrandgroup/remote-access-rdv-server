@@ -189,11 +189,10 @@ Switch/exit debug mode (outputs much more feedback on the console in debug mode 
             print('Unsupported debug mode: ' + args, file=sys.stderr)
 
     def do_exit(self, args):
-        if self._dbus_manager_iface.IsRegisteredTundevBinding(self.username):
-            self._dbus_manager_iface.UnregisterTundevBinding(self.username)
         """Usage: exit
 
 Terminates this command-line session"""
+        self._dbus_manager_iface.UnregisterTundevBinding(self.username)
         return True
 
     def do_logout(self, args):
