@@ -76,9 +76,9 @@ class TundevVtun(object):
         self.username = username
         self.vtun_server_tunnel = None
         
-        if self.username == 'rpi1100' or self.username == 'rpi1002':    # For our (only) onsite RPI (1002 is for debug)
+        if self.username == 'rpi1000' or self.username == 'rpi1002':    # For our (only) onsite RPI
             self.tundev_role = 'onsite'
-        elif self.username == 'rpi1101' or self.username == 'rpi1003':    # For our (only) master RPI (1003 is for debug)
+        elif self.username == 'rpi1001' or self.username == 'rpi1003':    # For our (only) master RPI
             self.tundev_role = 'master'
         else:
             raise Exception('UnknownTundevAccount:' + str(self.username))
@@ -347,6 +347,31 @@ class TundevManagerDBusService(dbus.service.Object):
         self._tundev_dict[username].vtunService.configure_service(mode, uplink_ip)
         
         return new_binding_object_path  # Reply the full D-Bus object path of the newly generated biding to the caller
+        
+        
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='b')
+    def IsRegisteredTundevBinding(self, username):
+        """ Register a new tunnelling device to the TundevManagerDBusService
+        
+        \param username Username of the account used by the tunnelling device
+        """
+        
+        with self._tundev_dict_mutex:
+            logger.debug('Checing register status binding for username ' + str(username))
+            
+            return self._tundev_dict.has_key(username)
+    
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='')
+    def UnregisterTundevBinding(self, username):
+        """ Register a new tunnelling device to the TundevManagerDBusService
+        
+        \param username Username of the account used by the tunnelling device
+        """
+        
+        with self._tundev_dict_mutex:
+            logger.debug('Unregistering binding for username ' + str(username))
+            
+            del self._tundev_dict[username]
     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpTundevBindings(self):
