@@ -42,8 +42,8 @@ class TunnellingDevShell(cmd.Cmd):
         self.prompt = self.username + '$ '
         
         self._vtun_server_tunnel = None # The vtun tunnel service
-	self.lan_ip_address = None
-	self.lan_ip_prefix = None   
+        self.lan_ip_address = None
+        self.lan_ip_prefix = None
      
         self._dbus_loop = gobject.MainLoop()    # Get a reference to the mainloop
         self._bus = dbus.SystemBus()    # Get a reference to the D-Bus system bus
@@ -106,8 +106,8 @@ class TunnellingDevShell(cmd.Cmd):
         
         Create a new D-Bus interface object to talk to the newly instanciated binding and store it into self._dbus_binding_iface
         """
-	if self.lan_ip_address is None or  self.lan_ip_prefix is None:
-		raise Exception('LanIpShouldBeProvidedBeforeRegistrationToManager')
+        if self.lan_ip_address is None or  self.lan_ip_prefix is None:
+            raise Exception('LanIpShouldBeProvidedBeforeRegistrationToManager')
         self._tundevbinding_dbus_path = self._dbus_manager_iface.RegisterTundevBinding(self.username, self.tunnel_mode, str(self.lan_ip_address) + '/' + str(self.lan_ip_prefix), self._shell_lockfilename)
         # Now create a proxy and interface to be abled to communicate with this binding
         self.logger.debug('Registered to binding with D-Bus object path: "' + str(self._tundevbinding_dbus_path) + '"')
@@ -161,8 +161,8 @@ eg: "192.168.1.2/24\""""
             ipv4 = ipaddr.IPv4Network(args)
             self.lan_ip_address = ipv4.ip
             self.lan_ip_prefix = ipv4._prefixlen
-	except ValueError:
-	    print('Invalid IP network:' + args, file=sys.stderr)
+        except ValueError:
+            print('Invalid IP network:' + args, file=sys.stderr)
 
     def do_echo(self, command):
         """Usage: echo {string}
@@ -189,6 +189,8 @@ Switch/exit debug mode (outputs much more feedback on the console in debug mode 
             print('Unsupported debug mode: ' + args, file=sys.stderr)
 
     def do_exit(self, args):
+        if self._dbus_manager_iface.IsRegisteredTundevBinding(self.username):
+            self._dbus_manager_iface.UnregisterTundevBinding(self.username)
         """Usage: exit
 
 Terminates this command-line session"""
