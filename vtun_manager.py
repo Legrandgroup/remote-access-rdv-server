@@ -312,12 +312,15 @@ class Session:
     def __init__(self, master_dev_id, onsite_dev_id):
         self.master_dev_id = master_dev_id
         self.onsite_dev_id = onsite_dev_id
-        
+    
     def __eq__(self, other):
         if self.master_dev_id == other.master_dev_id and self.onsite_dev_id == other.onsite_dev_id:
             return True
         else:
             return False
+    
+    def __str__(self):
+        return '(' + str(self.master_dev_id) + ', ' + str(self.onsite_dev_id) + ')'
 
 class TundevManagerDBusService(dbus.service.Object):
     """ Class allowing to send D-Bus requests to a TundevManager object
@@ -381,8 +384,20 @@ class TundevManagerDBusService(dbus.service.Object):
         with self._tundev_dict_mutex:
             logger.debug('Unregistering binding for username ' + str(username))
             try:
+                #Destroy the TundevBinding
                 self._tundev_dict[username].destroy()
+                #Clean the dictionary of registered devices
                 del self._tundev_dict[username]
+                #Clean the registered sessions that include the unregistered device
+                with self._session_pool_mutex:
+                    indexesToDelete = []
+                    def isPartOfSession(session, username):
+                        if session.onsite_dev_id == username or session.master_dev_id == username:
+                            return True
+                        else:
+                            return False
+                    #We only keep the session that don't have the unregistered username as a member (either master or onsite)
+                    self._session_pool = [s for s in self._session_pool if not isPartOfSession(s, username)]
             except:
                 pass
     
