@@ -68,7 +68,7 @@ class OnsiteDevShell(tundev_shell.TunnellingDevShell):
         
         self.uplink_type = None
 
-    def do_get_role(self):
+    def do_get_role(self, args):
         """Usage: get_role
 
 Returns the role of the user account running the current shell, which can be 'master' or 'onsite'"""

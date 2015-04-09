@@ -143,7 +143,7 @@ class TunnellingDevShell(cmd.Cmd):
     
     # Shell commands
     
-    def do_get_role(self):
+    def do_get_role(self, args):
         """Usage: get_role
 
 Returns the role of the user account running the current shell, which can be 'master' or 'onsite'"""
