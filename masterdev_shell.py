@@ -88,6 +88,15 @@ Output the parameters of the vtun tunnel to connect to the RDV server
         """
         for dev in self._dbus_manager_iface.DumpTundevBindings():
             print(dev.replace(DBUS_OBJECT_ROOT + '/', ''))
+            
+    def do_connect_to_onsite_dev(self, id):
+        """Usage: connect_to_onsite_dev_id {id}
+        \param id The id of the onsite device to connect to.
+        """
+        self._assert_registered_to_manager()
+        
+        self._dbus_manager_iface.ConnectMasterDevToOnsiteDev(self.username, id)
+        pass
 
 if __name__ == '__main__':
     # Setup logging
