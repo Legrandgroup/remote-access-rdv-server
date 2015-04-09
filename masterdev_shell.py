@@ -66,13 +66,18 @@ class MasterDevShell(tundev_shell.TunnellingDevShell):
         
         self.uplink_type = None
 
+    def do_get_role(self):
+        """Usage: get_role
+
+Returns the role of the user account running the current shell, which can be 'master' or 'onsite'"""
+        return 'master'
+
     def do_set_tunnel_mode(self, args):
         """Set the current tunnel mode
         Valid modes are L2, L3, L3_multi
         """
         self.tunnel_mode = args
 
-    
     def do_get_vtun_parameters(self, args):
         """Usage: get_vtun_parameters
 
@@ -81,7 +86,7 @@ Output the parameters of the vtun tunnel to connect to the RDV server
         
         self._start_remote_vtun_server()
         print(self._vtun_config_to_str())
-        
+
     def do_show_online_onsite_devs(self, args):
         """Usage: show_online_onsite_devs
         Lists all onsite devices connected

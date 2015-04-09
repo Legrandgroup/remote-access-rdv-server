@@ -75,6 +75,12 @@ class OnsiteDevShell(tundev_shell.TunnellingDevShell):
         #~ """
         #~ self._tunnel_mode = args
 
+    def do_get_role(self):
+        """Usage: get_role
+
+Returns the role of the user account running the current shell, which can be 'master' or 'onsite'"""
+        return 'onsite'
+
     def do_set_tunnelling_dev_uplink_type(self, args):
         """Usage: set_tunnelling_dev_uplink_type {type}
 
@@ -94,8 +100,6 @@ Wait until the RDV server is ready to accept a new vtun session.
 Output the readiness status of the RDV server, possible return values are "ready", "not_ready"
 """
         self._assert_registered_to_manager()
-        # Lionel: FIXME: implement something better than a file polling, something like a flock maybe?
-        # But we need to make sure that this type of event can be generated from commands in vtund's up block
         #FIXME: Temporary fix for lack of client selection from master dev shell.
         print('ready')
         return False
