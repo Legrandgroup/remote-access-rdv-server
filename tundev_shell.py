@@ -142,6 +142,13 @@ class TunnellingDevShell(cmd.Cmd):
         self._dbus_binding_iface.StartTunnelServer()
     
     # Shell commands
+    
+    def do_get_role(self):
+        """Usage: get_role
+
+Returns the role of the user account running the current shell, which can be 'master' or 'onsite'"""
+        pass    # Virtual, implemented in MasterDevShell and OnsiteDevShell
+    
     def do_get_tunnel_mode(self, args):
         """Usage: get_tunnel_mode
 
