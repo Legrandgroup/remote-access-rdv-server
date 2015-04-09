@@ -68,13 +68,6 @@ class OnsiteDevShell(tundev_shell.TunnellingDevShell):
         
         self.uplink_type = None
 
-    # Only for master dev=>move to masterdev_shell.py
-    #~ def do_set_tunnel_mode(self, args):
-        #~ """Set the current tunnel mode
-        #~ Valid modes are L2, L3, L3_multi
-        #~ """
-        #~ self._tunnel_mode = args
-
     def do_get_role(self):
         """Usage: get_role
 
