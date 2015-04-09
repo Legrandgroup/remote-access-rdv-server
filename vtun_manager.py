@@ -452,6 +452,8 @@ class TundevManagerDBusService(dbus.service.Object):
                     raise Exception('DevicesAlreadyConnected')
             
             self._session_pool += [toConnect]
+            #Allow the client to obtain its vtun configuration
+            self._tundev_dict[onsite_dev_id].vtunService.VtunAllowedSignal()
         
         
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
