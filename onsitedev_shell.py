@@ -72,7 +72,7 @@ class OnsiteDevShell(tundev_shell.TunnellingDevShell):
         """Usage: get_role
 
 Returns the role of the user account running the current shell, which can be 'master' or 'onsite'"""
-        return 'onsite'
+        print('onsite')
 
     def do_set_tunnelling_dev_uplink_type(self, args):
         """Usage: set_tunnelling_dev_uplink_type {type}

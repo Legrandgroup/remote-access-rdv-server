@@ -70,7 +70,7 @@ class MasterDevShell(tundev_shell.TunnellingDevShell):
         """Usage: get_role
 
 Returns the role of the user account running the current shell, which can be 'master' or 'onsite'"""
-        return 'master'
+        print('master')
 
     def do_set_tunnel_mode(self, args):
         """Set the current tunnel mode
