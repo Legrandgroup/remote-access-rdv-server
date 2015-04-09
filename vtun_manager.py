@@ -236,13 +236,15 @@ class TunDevShellWatchdog(object):
         self._lock_fn_watchdog_thread.start()
         self._unlock_callback = None
 
-    def set_unlock_callback(self, unlock_callback):
+    def set_unlock_callback(self, unlock_callback, arg):
         """ Set the function that will be called when the watchdog triggers
         
         \param unlock_callback The function to call
+        \param username The username parameter for the  callback
         """
         if hasattr(unlock_callback, '__call__'):
             self._unlock_callback = unlock_callback
+            self._arg = arg
         else:
             raise Exception('WrongCallback')
     
@@ -263,7 +265,7 @@ class TunDevShellWatchdog(object):
             logger.debug('Watchdog triggered but will be ignored because no unlock callback was setup')
         else:
             logger.debug('Watchdog triggered. Invoking unlock callback ' + str(self._unlock_callback))
-            self._unlock_callback()
+            self._unlock_callback(self._arg)
             
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
@@ -290,13 +292,32 @@ class TundevShellBinding(object):
         
         This method will not raise exceptions
         """
+        username = self.vtunService.username
         try:
+            #FIXME: Race condition if watchdog triggers while we are executing this method
             if not self.shellAliveWatchdog is None:
-                self.shellAliveWatchdog.destroy()
+                #We set attribute to None in order to execute this piece of code only one
+                copy = self.shellAliveWatchdog
+                self.shellAliveWatchdog = None
+                copy.destroy()
             if not self.vtunService is None:
-                self.vtunService.destroy()
+                #We set attribute to None in order to execute this piece of code only one
+                copy = self.vtunService
+                self.vtunService = None
+                copy.destroy()
         except:
             pass
+
+class Session:
+    def __init__(self, master_dev_id, onsite_dev_id):
+        self.master_dev_id = master_dev_id
+        self.onsite_dev_id = onsite_dev_id
+        
+    def __eq__(self, other):
+        if self.master_dev_id == other.master_dev_id and self.onsite_dev_id == other.onsite_dev_id:
+            return True
+        else:
+            return False
 
 class TundevManagerDBusService(dbus.service.Object):
     """ Class allowing to send D-Bus requests to a TundevManager object
@@ -316,6 +337,9 @@ class TundevManagerDBusService(dbus.service.Object):
         
         self._tundev_dict = {}    # Initialise with an empty TunDevBinding dict
         self._tundev_dict_mutex = threading.Lock() # This mutex protects writes and reads to the _tundev_dict attribute
+        
+        self._session_pool = []    # Initialise with an empty Session array
+        self._session_pool_mutex = threading.Lock() # This mutex protects writes and reads to the _session_pool attribute
 
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ssss', out_signature='s')
     def RegisterTundevBinding(self, username, mode, uplink_ip, shell_alive_lock_fn):
@@ -340,7 +364,7 @@ class TundevManagerDBusService(dbus.service.Object):
             new_binding = TundevShellBinding()
             new_binding.vtunService = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
             new_binding.shellAliveWatchdog = TunDevShellWatchdog(shell_alive_lock_fn)
-            new_binding.shellAliveWatchdog.set_unlock_callback(new_binding.vtunService.destroy)
+            new_binding.shellAliveWatchdog.set_unlock_callback(self.UnregisterTundevBinding, username)
                 
             self._tundev_dict[username] = new_binding
         
@@ -354,10 +378,10 @@ class TundevManagerDBusService(dbus.service.Object):
         
         \param username Username of the account used by the tunnelling device
         """
-        
         with self._tundev_dict_mutex:
             logger.debug('Unregistering binding for username ' + str(username))
             try:
+                self._tundev_dict[username].destroy()
                 del self._tundev_dict[username]
             except:
                 pass
@@ -387,6 +411,43 @@ class TundevManagerDBusService(dbus.service.Object):
                 if dev.vtunService.tundev_role == 'onsite':
                     online_onsite_devs_list += [dev.vtunService.username]
         return online_onsite_devs_list
+        
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ss', out_signature='')
+    def ConnectMasterDevToOnsiteDev(self, master_dev_id, onsite_dev_id):
+        """ Connect a master device to an onsite device.
+        \param master_dev_id The master device identifier
+        \param onsite_dev_id The onsite device identifier
+        """
+        
+        with self._session_pool_mutex:
+            try:
+                self._tundev_dict[master_dev_id]
+            except:
+                raise Exception('MasterDeviceIsNotRegistered')
+                
+            try:
+                self._tundev_dict[onsite_dev_id]
+            except:
+                raise Exception('OnsiteDeviceIsNotRegistered')
+            
+            toConnect = Session(master_dev_id, onsite_dev_id)
+            for session in self._session_pool:
+                print(session == toConnect)
+                if session == toConnect:
+                    raise Exception('DevicesAlreadyConnected')
+            
+            self._session_pool += [toConnect]
+        
+        
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
+    def DumpSessions(self):
+        """ Dump all TundevBindingDBusService objects registerd
+        
+        \return We will return an array of instanciated TundevBindingDBusService object paths
+        """
+        
+        
+        return map( lambda p: str(p.master_dev_id) + ',' +str(p.onsite_dev_id), self._session_pool)
 
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
