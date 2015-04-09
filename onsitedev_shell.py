@@ -85,7 +85,7 @@ eg: "lan\""""
         else:
             print('Unsupported uplink type: ' + args, file=sys.stderr)
 
-    def do_wait_vtun_allowed(self, args):
+    def do_wait_master_connection(self, args):
         """Usage: wait_vtun_allowed
 
 Wait until the RDV server is ready to accept a new vtun session.
@@ -93,10 +93,7 @@ Wait until the RDV server is ready to accept a new vtun session.
 Output the readiness status of the RDV server, possible return values are "ready", "not_ready"
 """
         self._assert_registered_to_manager()
-        #FIXME: Temporary fix for lack of client selection from master dev shell.
-        print('ready')
-        return False
-        
+                
         timeout = 60
         event =threading.Event()
         event.clear()
@@ -116,17 +113,6 @@ Output the readiness status of the RDV server, possible return values are "ready
         else:
             print('ready')
             return False
-        #timeout = 60    # 60s
-        #vtun_check_fname = OnsiteDevShell.VTUN_READY_FNAME_PREFIX + self.username
-        #print('Checking "%s"' % (vtun_check_fname))
-        #while timeout>0:
-        #    if os.path.isfile(vtun_check_fname):
-        #        print('ready')
-        #        return False
-        #    else:
-        #        time.sleep(1)
-        #        timeout -= 1
-        #print('not_ready', file=sys.stderr)
     
     def do_get_vtun_parameters(self, args):
         """Usage: get_vtun_parameters
