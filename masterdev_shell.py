@@ -91,8 +91,8 @@ Output the parameters of the vtun tunnel to connect to the RDV server
         """Usage: show_online_onsite_devs
         Lists all onsite devices connected
         """
-        for dev in self._dbus_manager_iface.DumpTundevBindings():
-            print(dev.replace(DBUS_OBJECT_ROOT + '/', ''))
+        for dev in self._dbus_manager_iface.GetOnlineOnsiteDevs():
+            print(dev)
             
     def do_connect_to_onsite_dev(self, id):
         """Usage: connect_to_onsite_dev_id {id}
