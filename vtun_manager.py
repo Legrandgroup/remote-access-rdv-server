@@ -26,6 +26,7 @@ import atexit
 #We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
 from pythonvtunlib import server_vtun_tunnel
 from pythonvtunlib import client_vtun_tunnel
+from pythonvtunlib import tunnel_mode 
 
 progname = os.path.basename(sys.argv[0])
 
@@ -103,6 +104,17 @@ class TundevVtun(object):
         """ Start a vtund server to handle connectivity with this tunnelling device
         """
         if not self.vtun_server_tunnel is None:
+            iface_name = ''
+            if self.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
+                iface_name += 'tap'
+            if self.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
+                iface_name += 'tun'
+            if self.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3_multi':
+                iface_name += 'tunM'
+                    
+            iface_name += "_to_"
+            iface_name += self.username
+            self.vtun_server_tunnel.set_interface_name(iface_name)
             self.vtun_server_tunnel.start()
         else:
             raise Exception('VtunServerCannotBeStarted:NotConfigured')
