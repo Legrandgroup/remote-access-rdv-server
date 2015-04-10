@@ -470,13 +470,13 @@ class TundevManagerDBusService(dbus.service.Object):
         \param iface_name The tunnel interface name
         \param status The status of the interface (up or down) 
         """
-        if str(status).lower() != 'up' and str(status).lower() != 'down':
-            raise Exception('InvalidInterfaceStatus')
-        
         try:
             self._tundev_dict[str(device_id)]
         except:
             raise Exception('Unknow device')
+        
+        if str(status).lower() != 'up' and str(status).lower() != 'down':
+            raise Exception('InvalidInterfaceStatus')
         
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
