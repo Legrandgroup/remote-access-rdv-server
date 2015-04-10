@@ -463,16 +463,46 @@ class TundevManagerDBusService(dbus.service.Object):
             #Allow the client to obtain its vtun configuration
             self._tundev_dict[onsite_dev_id].vtunService.VtunAllowedSignal()
         
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sss', out_signature='')
+    def TunnelInterfaceStatusUpdate(self, device_id, iface_name, status):
+        """ Update status (up/down) of a tunnel interface.
+        \param device_id The device identifier
+        \param iface_name The tunnel interface name
+        \param status The status of the interface (up or down) 
+        """
+        if str(status).lower() != 'up' and str(status).lower() != 'down':
+            raise Exception('InvalidInterfaceStatus')
         
+        try:
+            self._tundev_dict[str(device_id)]
+        except:
+            raise Exception('Unknow device')
+        
+        with self._tundev_dict_mutex:
+            with self._session_pool_mutex:
+                for session in self._session_pool:
+                    if session.master_dev_id == device_id:
+                        if status == 'up':
+                            session.master_dev_iface = iface_name
+                        if status == 'down':
+                            session.master_dev_iface = None
+                    if session.onsite_dev_id == device_id:
+                        if status == 'up':
+                            session.onsite_dev_iface = iface_name
+                        if status == 'down':
+                            session.onsite_dev_iface = None
+                            
+                    if not session.master_dev_iface is None and not session.onsite_dev_iface is None:
+                        pass #Make the glue between tunnels here
+    
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpSessions(self):
         """ Dump all TundevBindingDBusService objects registerd
         
         \return We will return an array of instanciated TundevBindingDBusService object paths
         """
-        
-        
-        return map( lambda p: str(p.master_dev_id) + ',' +str(p.onsite_dev_id), self._session_pool)
+                
+        return map( lambda p: str(p), self._session_pool)
 
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
