@@ -312,15 +312,23 @@ class Session:
     def __init__(self, master_dev_id, onsite_dev_id):
         self.master_dev_id = master_dev_id
         self.onsite_dev_id = onsite_dev_id
-    
+        self.master_dev_iface = None
+        self.onsite_dev_iface = None
+        
     def __eq__(self, other):
-        if self.master_dev_id == other.master_dev_id and self.onsite_dev_id == other.onsite_dev_id:
+        if (self.master_dev_id == other.master_dev_id 
+            and self.onsite_dev_id == other.onsite_dev_id
+            and self.master_dev_iface == other.master_dev_iface 
+            and self.onsite_dev_iface == other.onsite_dev_iface):
             return True
         else:
             return False
     
     def __str__(self):
-        return '(' + str(self.master_dev_id) + ', ' + str(self.onsite_dev_id) + ')'
+        if not self.onsite_dev_iface is None and not self.master_dev_iface is None:
+            return '(' + str(self.master_dev_id) + ', ' + str(self.onsite_dev_id) + '): [M]' + self.master_dev_iface + ' <-> [O]' + self.onsite_dev_iface 
+        else:
+            return '(' + str(self.master_dev_id) + ', ' + str(self.onsite_dev_id) + ')'
 
 class TundevManagerDBusService(dbus.service.Object):
     """ Class allowing to send D-Bus requests to a TundevManager object
