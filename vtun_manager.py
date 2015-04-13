@@ -27,6 +27,7 @@ import atexit
 from pythonvtunlib import server_vtun_tunnel
 from pythonvtunlib import client_vtun_tunnel
 from pythonvtunlib import tunnel_mode 
+from audioop import lin2adpcm
 
 progname = os.path.basename(sys.argv[0])
 
@@ -104,6 +105,7 @@ class TundevVtun(object):
         """ Start a vtund server to handle connectivity with this tunnelling device
         """
         if not self.vtun_server_tunnel is None:
+            #We set up the interface name to the corresponding devshell
             iface_name = ''
             if self.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
                 iface_name += 'tap'
@@ -115,6 +117,29 @@ class TundevVtun(object):
             iface_name += "_to_"
             iface_name += self.username
             self.vtun_server_tunnel.set_interface_name(iface_name)
+            
+            #We set up the up & down block commands (basically dbus method call to notify the interface status change
+            #dbus-send --system --print-reply --dest=com.legrandelectric.RemoteAccess.TundevManager /com/legrandelectric/RemoteAccess/TundevManager com.legrandelectric.RemoteAccess.TundevManager.TunnelInterfaceStatusUpdate string:'rpi1101' string:'tun_to_rpi1101' string:'up'
+            #Command should be provided with full path
+            #Also, parameters are between doubles quotes "
+            def generate_dbus_call_for_status(status):
+                command =  '/usr/bin/dbus-send '
+                command += '"--system --print-reply'
+                command += ' --dest=' + DBUS_SERVICE_INTERFACE + ' '
+                command += DBUS_OBJECT_ROOT + ' '
+                command += DBUS_SERVICE_INTERFACE +'.TunnelInterfaceStatusUpdate '
+                command += ' string:' + self.username 
+                command += ' string:' + iface_name
+                command += ' string:' + str(status)
+                command += '"'
+                return command
+            
+            #For Up Block
+            up_command = generate_dbus_call_for_status('up')
+            self.vtun_server_tunnel.add_up_command(up_command)
+            #For Down Block
+            down_command = generate_dbus_call_for_status('down')
+            self.vtun_server_tunnel.add_down_command(down_command)
             self.vtun_server_tunnel.start()
         else:
             raise Exception('VtunServerCannotBeStarted:NotConfigured')
@@ -503,7 +528,7 @@ class TundevManagerDBusService(dbus.service.Object):
                             session.onsite_dev_iface = iface_name
                         if status == 'down':
                             session.onsite_dev_iface = None
-                            
+                    #print('DBusCall: TunnelInterfaceStatusUpdate -> ' + iface_name + ' to communicate with ' + device_id + ' is now ' + status)
                     if not session.master_dev_iface is None and not session.onsite_dev_iface is None:
                         pass #Make the glue between tunnels here
     
