@@ -530,8 +530,14 @@ class TundevManagerDBusService(dbus.service.Object):
                             session.onsite_dev_iface = None
                     #print('DBusCall: TunnelInterfaceStatusUpdate -> ' + iface_name + ' to communicate with ' + device_id + ' is now ' + status)
                     if not session.master_dev_iface is None and not session.onsite_dev_iface is None:
-                        pass #Make the glue between tunnels here
-    
+                        #Make the glue between tunnels here
+                        #1 Check if the kernel is routing at IP level
+                        #2 If not, activate this feature
+                        #3 Set default behavior of FORWARD table to DROP
+                        #4 Add a rule to allow trafic from master interface to onsite interface
+                        #5 Add a rule to allow trafic from onsite interface to master interface
+                        pass
+
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpSessions(self):
         """ Dump all TundevBindingDBusService objects registerd
@@ -540,6 +546,56 @@ class TundevManagerDBusService(dbus.service.Object):
         """
                 
         return map( lambda p: str(p), self._session_pool)
+    
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='as')
+    def GetClientSideUpBlockCommands(self, username):
+        """ List all command sthe should be put in the up block of this client vtun configuration file
+        
+        \return We will return an array of commands
+        """
+        
+        commands = []
+        with self._tundev_dict_mutex:
+            with self._session_pool_mutex:
+                for session in self._session_pool:
+                    shouldBeAdded = False
+                    command = '/sbin/route "add <far_ip> gw <gw_ip> dev %%"'
+                    if session.onsite_dev_id == username:
+                        command = command.replace('<far_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
+                        command = command.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        shouldBeAdded = True
+                    if session.master_dev_id == username:
+                        command = command.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
+                        command = command.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        shouldBeAdded = True
+                    if shouldBeAdded:
+                        commands += [command]
+        return commands
+    
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='as')
+    def GetClientSideDownBlockCommands(self, username):
+        """ List all command sthe should be put in the down block of this client vtun configuration file
+        
+        \return We will return an array of commands
+        """
+        
+        commands = []
+        with self._tundev_dict_mutex:
+            with self._session_pool_mutex:
+                for session in self._session_pool:
+                    shouldBeAdded = False
+                    command = '/sbin/route "del <far_ip> gw <gw_ip> dev %%"'
+                    if session.onsite_dev_id == username:
+                        command = command.replace('<far_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
+                        command = command.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        shouldBeAdded = True
+                    if session.master_dev_id == username:
+                        command = command.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
+                        command = command.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        shouldBeAdded = True
+                    if shouldBeAdded:
+                        commands += [command]
+        return commands
 
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
