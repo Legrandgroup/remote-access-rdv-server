@@ -551,10 +551,10 @@ class TundevManagerDBusService(dbus.service.Object):
                         if status == 'down':
                             session.onsite_dev_iface = None
                     #print('DBusCall: TunnelInterfaceStatusUpdate -> ' + iface_name + ' to communicate with ' + device_id + ' is now ' + status)
-                    print('Previous status of session ' + str(session) + ': ' + previous_status)
-                    print('Current status of session ' + str(session) + ': ' + session.get_status())
+                    #print('Previous status of session ' + str(session) + ': ' + previous_status)
+                    #print('Current status of session ' + str(session) + ': ' + session.get_status())
                     if previous_status == 'in-progress' and session.get_status() == 'up':
-                        print('Making the glue for session ' + str(session))
+                        #print('Making the glue for session ' + str(session))
                         #Make the glue between tunnels here
                         #1 Check if the kernel is routing at IP level
                         out = subprocess.check_output('sysctl net.ipv4.ip_forward', shell=True)
@@ -570,7 +570,7 @@ class TundevManagerDBusService(dbus.service.Object):
                         #4 Add a rule to allow trafic from onsite interface to master interface
                         os.system(rule.replace('<in>', str(session.onsite_dev_iface)).replace('<out>', str(session.master_dev_iface)))
                     if previous_status == 'up' and session.get_status() == 'in-progress':
-                        print('Breaking the glue for session ' + str(session))
+                        #print('Breaking the glue for session ' + str(session))
                         #Break the glue between the tunnels here
                         #1 Remove iptables rule to allow trafic from master interface to onsite interface
                         rule = 'iptables -D FORWARD -i <in> -o <out> -j ACCEPT'
@@ -586,11 +586,11 @@ class TundevManagerDBusService(dbus.service.Object):
                         #3 If there is no more sessions, disable routing in kernel
                         disableRouting = True
                         for session in self._session_pool:
-                            print('Session ' + str(session) + ' status is ' + session.get_status())
+                            #print('Session ' + str(session) + ' status is ' + session.get_status())
                             if session.get_status() == 'up':
                                 disableRouting = False
                         if disableRouting:
-                            print('Disabling routing')
+                            #print('Disabling routing')
                             os.system('sysctl net.ipv4.ip_forward=0') #Disabling routing in kernel
                             
                     
