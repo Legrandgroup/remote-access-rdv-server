@@ -38,6 +38,8 @@ DBUS_NAME = 'com.legrandelectric.RemoteAccess.TundevManager'	# The name of bus w
 DBUS_OBJECT_ROOT = '/com/legrandelectric/RemoteAccess/TundevManager'	# The root under which we will create a D-Bus object with the username of the account for the tunnelling device for D-Bus communication, eg: /com/legrandelectric/RemoteAccess/TundevManager/1000 to communicate with a TundevBinding instance running for the UNIX account 1000 (/home/1000)
 DBUS_SERVICE_INTERFACE = 'com.legrandelectric.RemoteAccess.TundevManager'	# The name of the D-Bus service under which we will perform input/output on D-Bus
 
+setForwardPolicyToAcceptAtExit = False
+
 def cleanup_at_exit():
     """
     Called when this program is terminated, to release the lock
@@ -49,6 +51,10 @@ def cleanup_at_exit():
         print(progname + ': Shutting down', file=sys.stderr)   # For debug
         tundev_manager.destroy()
         tundev_manager = None
+        
+    #Set FORWARD policy to ACCEPT if it was to accept when the manage was launch
+    if setForwardPolicyToAcceptAtExit:
+        os.system('iptables -P FORWARD ACCEPT')
 
 # def signal_handler(signum, frame):
 #     """
@@ -367,6 +373,20 @@ class Session:
             return '(' + str(self.master_dev_id) + ', ' + str(self.onsite_dev_id) + '): [M]' + self.master_dev_iface + ' <-> [O]' + self.onsite_dev_iface 
         else:
             return '(' + str(self.master_dev_id) + ', ' + str(self.onsite_dev_id) + ')'
+    
+    def get_status(self):
+        """Provides the status of this session (aka , up, odnw of in-progress)
+        \return The status of this session
+        """
+        if self.master_dev_iface is None and self.onsite_dev_iface is None:
+            return 'down'
+        elif not self.master_dev_iface is None and not self.onsite_dev_iface is None: 
+            return 'up'
+        elif not self.master_dev_iface is None or not self.onsite_dev_iface is None:
+            return 'in-progress'
+        
+        
+        raise Exception('InvalidSessionStatus')
 
 class TundevManagerDBusService(dbus.service.Object):
     """ Class allowing to send D-Bus requests to a TundevManager object
@@ -519,6 +539,7 @@ class TundevManagerDBusService(dbus.service.Object):
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
                 for session in self._session_pool:
+                    previous_status = session.get_status()
                     if session.master_dev_id == device_id:
                         if status == 'up':
                             session.master_dev_iface = iface_name
@@ -530,7 +551,10 @@ class TundevManagerDBusService(dbus.service.Object):
                         if status == 'down':
                             session.onsite_dev_iface = None
                     #print('DBusCall: TunnelInterfaceStatusUpdate -> ' + iface_name + ' to communicate with ' + device_id + ' is now ' + status)
-                    if not session.master_dev_iface is None and not session.onsite_dev_iface is None:
+                    print('Previous status of session ' + str(session) + ': ' + previous_status)
+                    print('Current status of session ' + str(session) + ': ' + session.get_status())
+                    if previous_status == 'in-progress' and session.get_status() == 'up':
+                        print('Making the glue for session ' + str(session))
                         #Make the glue between tunnels here
                         #1 Check if the kernel is routing at IP level
                         out = subprocess.check_output('sysctl net.ipv4.ip_forward', shell=True)
@@ -540,14 +564,36 @@ class TundevManagerDBusService(dbus.service.Object):
                         #2 If not, activate this feature
                         if not routingEnabled: #Routing not enabled in kernel
                             os.system('sysctl net.ipv4.ip_forward=1') #Enabling routing in kernel
-                        #3 Set default behavior of FORWARD table to DROP
-                        os.system('iptables -P FORWARD DROP')
-                        #4 Add a rule to allow trafic from master interface to onsite interface
+                        #3 Add a rule to allow trafic from master interface to onsite interface
                         rule = 'iptables -A FORWARD -i <in> -o <out> -j ACCEPT'
                         os.system(rule.replace('<in>', str(session.master_dev_iface)).replace('<out>', str(session.onsite_dev_iface)))
-                        #5 Add a rule to allow trafic from onsite interface to master interface
+                        #4 Add a rule to allow trafic from onsite interface to master interface
                         os.system(rule.replace('<in>', str(session.onsite_dev_iface)).replace('<out>', str(session.master_dev_iface)))
-
+                    if previous_status == 'up' and session.get_status() == 'in-progress':
+                        print('Breaking the glue for session ' + str(session))
+                        #Break the glue between the tunnels here
+                        #1 Remove iptables rule to allow trafic from master interface to onsite interface
+                        rule = 'iptables -D FORWARD -i <in> -o <out> -j ACCEPT'
+                        master_dev_iface = session.master_dev_iface
+                        onsite_dev_iface = session.onsite_dev_iface
+                        if master_dev_iface is None:
+                            master_dev_iface = iface_name
+                        if onsite_dev_iface is None:
+                            onsite_dev_iface = iface_name
+                        os.system(rule.replace('<in>', str(master_dev_iface)).replace('<out>', str(onsite_dev_iface)))
+                        #2 Remove iptables rule to allow trafic from onsite interface to master interface
+                        os.system(rule.replace('<in>', str(onsite_dev_iface)).replace('<out>', str(master_dev_iface)))
+                        #3 If there is no more sessions, disable routing in kernel
+                        disableRouting = True
+                        for session in self._session_pool:
+                            print('Session ' + str(session) + ' status is ' + session.get_status())
+                            if session.get_status() == 'up':
+                                disableRouting = False
+                        if disableRouting:
+                            print('Disabling routing')
+                            os.system('sysctl net.ipv4.ip_forward=0') #Disabling routing in kernel
+                            
+                    
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpSessions(self):
         """ Dump all TundevBindingDBusService objects registerd
@@ -629,6 +675,12 @@ dbus.mainloop.glib.DBusGMainLoop(set_as_default=True) # Use Glib's mainloop as t
 if __name__ == '__main__':
     atexit.register(cleanup_at_exit)
     
+    #Check the default policy for FORWARD table, if it is to ACCEPT, then we put it to DROP
+    out = subprocess.check_output('iptables -L FORWARD | grep -Ei \'.*(policy\s.*)\' | grep -oEi \'(policy [A-Z]+)\'', shell=True)
+    if out.replace('\n', '').split(' ')[1] == 'ACCEPT':
+        os.system('iptables -P FORWARD DROP')
+        setForwardPolicyToAcceptAtExit = True
+        
     # Parse arguments
     parser = argparse.ArgumentParser(description="This program launches a vtun manager daemon. \
 It will handle tunnel creation/destruction on behalf of tundev_shell processes, via D-Bus methods and signal. \
