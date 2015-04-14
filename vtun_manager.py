@@ -54,7 +54,7 @@ def cleanup_at_exit():
         
     #Set FORWARD policy to ACCEPT if it was to accept when the manage was launch
     if setForwardPolicyToAcceptAtExit:
-        os.system('iptables -P FORWARD ACCEPT')
+        os.system('iptables -P FORWARD ACCEPT  > /dev/null 2>&1')
 
 # def signal_handler(signum, frame):
 #     """
@@ -557,13 +557,15 @@ class TundevManagerDBusService(dbus.service.Object):
                         #print('Making the glue for session ' + str(session))
                         #Make the glue between tunnels here
                         #1 Check if the kernel is routing at IP level
-                        out = subprocess.check_output('sysctl net.ipv4.ip_forward', shell=True)
+                        p = subprocess.Popen('sysctl net.ipv4.ip_forward', shell=True, stdout=subprocess.PIPE) 
+                        out = p.communicate()[0]
+                        #out = subprocess.check_output('sysctl net.ipv4.ip_forward', shell=True)
                         routingEnabled = False
                         if str(out).split(' = ')[1] == '1':
                             routingEnabled = True
                         #2 If not, activate this feature
                         if not routingEnabled: #Routing not enabled in kernel
-                            os.system('sysctl net.ipv4.ip_forward=1') #Enabling routing in kernel
+                            os.system('sysctl net.ipv4.ip_forward=1 > /dev/null 2>&1') #Enabling routing in kernel
                         #3 Add a rule to allow trafic from master interface to onsite interface
                         rule = 'iptables -A FORWARD -i <in> -o <out> -j ACCEPT'
                         os.system(rule.replace('<in>', str(session.master_dev_iface)).replace('<out>', str(session.onsite_dev_iface)))
@@ -573,7 +575,7 @@ class TundevManagerDBusService(dbus.service.Object):
                         #print('Breaking the glue for session ' + str(session))
                         #Break the glue between the tunnels here
                         #1 Remove iptables rule to allow trafic from master interface to onsite interface
-                        rule = 'iptables -D FORWARD -i <in> -o <out> -j ACCEPT'
+                        rule = 'iptables -D FORWARD -i <in> -o <out> -j ACCEPT  > /dev/null 2>&1'
                         master_dev_iface = session.master_dev_iface
                         onsite_dev_iface = session.onsite_dev_iface
                         if master_dev_iface is None:
@@ -591,7 +593,7 @@ class TundevManagerDBusService(dbus.service.Object):
                                 disableRouting = False
                         if disableRouting:
                             #print('Disabling routing')
-                            os.system('sysctl net.ipv4.ip_forward=0') #Disabling routing in kernel
+                            os.system('sysctl net.ipv4.ip_forward=0  > /dev/null 2>&1') #Disabling routing in kernel
                             
                     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
@@ -678,7 +680,7 @@ if __name__ == '__main__':
     #Check the default policy for FORWARD table, if it is to ACCEPT, then we put it to DROP
     out = subprocess.check_output('iptables -L FORWARD | grep -Ei \'.*(policy\s.*)\' | grep -oEi \'(policy [A-Z]+)\'', shell=True)
     if out.replace('\n', '').split(' ')[1] == 'ACCEPT':
-        os.system('iptables -P FORWARD DROP')
+        os.system('iptables -P FORWARD DROP  > /dev/null 2>&1')
         setForwardPolicyToAcceptAtExit = True
         
     # Parse arguments
