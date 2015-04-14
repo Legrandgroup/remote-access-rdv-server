@@ -218,6 +218,23 @@ Terminates this command-line session"""
         \return A multi-line config used for shell output
         """
         return '\n'.join(self._get_vtun_shell_config())
-
+    
+    def do_get_vtun_client_up_additionnal_commands(self, args):
+        """Usage: get_vtun_client_up_additionnal_commands
+        
+        Get the command for the up block of client side configuration file of vtund
+        
+        \return A list of commands to insert in the configuration file
+        """
+        print('\n'.join(self._dbus_manager_iface.GetClientSideUpBlockCommands(self.username)))
+        
+    def do_get_vtun_client_down_additionnal_commands(self, args):
+        """Usage: get_vtun_client_down_additionnal_commands
+        
+        Get the command for the down block of client side configuration file of vtund
+        
+        \return A list of commands to insert in the configuration file
+        """
+        print('\n'.join(self._dbus_manager_iface.GetClientSideDownBlockCommands(self.username)))
 
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True) # Use Glib's mainloop as the default loop for all subsequent code
