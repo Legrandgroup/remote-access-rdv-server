@@ -28,6 +28,7 @@ from pythonvtunlib import server_vtun_tunnel
 from pythonvtunlib import client_vtun_tunnel
 from pythonvtunlib import tunnel_mode 
 from audioop import lin2adpcm
+import subprocess
 
 progname = os.path.basename(sys.argv[0])
 
@@ -532,11 +533,20 @@ class TundevManagerDBusService(dbus.service.Object):
                     if not session.master_dev_iface is None and not session.onsite_dev_iface is None:
                         #Make the glue between tunnels here
                         #1 Check if the kernel is routing at IP level
+                        out = subprocess.check_output('sysctl net.ipv4.ip_forward', shell=True)
+                        routingEnabled = False
+                        if str(out).split(' = ')[1] == '1':
+                            routingEnabled = True
                         #2 If not, activate this feature
+                        if not routingEnabled: #Routing not enabled in kernel
+                            os.system('sysctl net.ipv4.ip_forward=1') #Enabling routing in kernel
                         #3 Set default behavior of FORWARD table to DROP
+                        os.system('iptables -P FORWARD DROP')
                         #4 Add a rule to allow trafic from master interface to onsite interface
+                        rule = 'iptables -A FORWARD -i <in> -o <out> -j ACCEPT'
+                        os.system(rule.replace('<in>', str(session.master_dev_iface)).replace('<out>', str(session.onsite_dev_iface)))
                         #5 Add a rule to allow trafic from onsite interface to master interface
-                        pass
+                        os.system(rule.replace('<in>', str(session.onsite_dev_iface)).replace('<out>', str(session.master_dev_iface)))
 
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpSessions(self):
