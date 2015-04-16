@@ -29,6 +29,7 @@ from pythonvtunlib import client_vtun_tunnel
 from pythonvtunlib import tunnel_mode 
 from audioop import lin2adpcm
 import subprocess
+import ipaddr
 
 progname = os.path.basename(sys.argv[0])
 
@@ -327,9 +328,11 @@ class TundevShellBinding(object):
     
     Objects of this class only have attributes (there are no method): 
     """
-    def __init__(self):
+    def __init__(self, uplink_ip):
         self.vtunService = None
         self.shellAliveWatchdog = None
+        
+        self.lan_ip = ipaddr.IPv4Network(str(uplink_ip))
         
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
@@ -430,7 +433,7 @@ class TundevManagerDBusService(dbus.service.Object):
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
                 old_binding.destroy()
             
-            new_binding = TundevShellBinding()
+            new_binding = TundevShellBinding(uplink_ip)
             new_binding.vtunService = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
             new_binding.shellAliveWatchdog = TunDevShellWatchdog(shell_alive_lock_fn)
             new_binding.shellAliveWatchdog.set_unlock_callback(self.UnregisterTundevBinding, username)
@@ -571,6 +574,15 @@ class TundevManagerDBusService(dbus.service.Object):
                         os.system(rule.replace('<in>', str(session.master_dev_iface)).replace('<out>', str(session.onsite_dev_iface)))
                         #4 Add a rule to allow trafic from onsite interface to master interface
                         os.system(rule.replace('<in>', str(session.onsite_dev_iface)).replace('<out>', str(session.master_dev_iface)))
+                        
+                        #Make the route
+                        #commandRouteToOnsiteNetwork = 'route add -net <far_ip> netmask <netmask> gw <gw_ip> dev <iface_name>'.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.network))
+                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<netmask>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.netmask))
+                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<iface_name>', str(session.onsite_dev_iface))
+                        #print(commandRouteToOnsiteNetwork)
+                        #os.system(commandRouteToOnsiteNetwork)
+                        
                     if previous_status == 'up' and session.get_status() == 'in-progress':
                         #print('Breaking the glue for session ' + str(session))
                         #Break the glue between the tunnels here
@@ -595,6 +607,13 @@ class TundevManagerDBusService(dbus.service.Object):
                             #print('Disabling routing')
                             os.system('sysctl net.ipv4.ip_forward=0  > /dev/null 2>&1') #Disabling routing in kernel
                             
+                        #Delete the route
+                        #commandRouteToOnsiteNetwork = 'route del -net <far_ip> netmask <netmask> gw <gw_ip> dev <iface_name>'.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.network))
+                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<netmask>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.netmask))
+                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<iface_name>', str(session.onsite_dev_iface))
+                        #print(commandRouteToOnsiteNetwork)
+                        #os.system(commandRouteToOnsiteNetwork)
                     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpSessions(self):
@@ -612,22 +631,30 @@ class TundevManagerDBusService(dbus.service.Object):
         \return We will return an array of commands
         """
         
+        try:
+            self._tundev_dict[username]
+        except:
+            raise Exception('InvalidDeviceId')
+        
         commands = []
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
                 for session in self._session_pool:
-                    shouldBeAdded = False
                     command = '/sbin/route "add <far_ip> gw <gw_ip> dev %%"'
                     if session.onsite_dev_id == username:
-                        command = command.replace('<far_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
-                        command = command.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        shouldBeAdded = True
-                    if session.master_dev_id == username:
-                        command = command.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
-                        command = command.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        shouldBeAdded = True
-                    if shouldBeAdded:
-                        commands += [command]
+                        commandRouteInsideTunnel = command.replace('<far_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
+                        commandRouteInsideTunnel = commandRouteInsideTunnel.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        commands += [commandRouteInsideTunnel]
+                        
+                    elif session.master_dev_id == username:
+                        commandRouteInsideTunnel = command.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
+                        commandRouteInsideTunnel = commandRouteInsideTunnel.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        commands += [commandRouteInsideTunnel]
+                        commandRouteToOnsiteNetwork = '/sbin/route "add -net <far_ip> netmask <netmask> gw <gw_ip> dev %%"'.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.network))
+                        commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<netmask>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.netmask))
+                        commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        #print('Command Route to Onsite Network: ' + commandRouteToOnsiteNetwork)
+                        commands += [commandRouteToOnsiteNetwork]
         return commands
     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='as')
@@ -641,18 +668,21 @@ class TundevManagerDBusService(dbus.service.Object):
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
                 for session in self._session_pool:
-                    shouldBeAdded = False
                     command = '/sbin/route "del <far_ip> gw <gw_ip> dev %%"'
                     if session.onsite_dev_id == username:
-                        command = command.replace('<far_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
-                        command = command.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        shouldBeAdded = True
-                    if session.master_dev_id == username:
-                        command = command.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
-                        command = command.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        shouldBeAdded = True
-                    if shouldBeAdded:
-                        commands += [command]
+                        commandRouteInsideTunnel = command.replace('<far_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
+                        commandRouteInsideTunnel = commandRouteInsideTunnel.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        commands += [commandRouteInsideTunnel]
+                        
+                    elif session.master_dev_id == username:
+                        commandRouteInsideTunnel = command.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
+                        commandRouteInsideTunnel = commandRouteInsideTunnel.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        commands += [commandRouteInsideTunnel]
+                        commandRouteToOnsiteNetwork = '/sbin/route "del -net <far_ip> netmask <netmask> gw <gw_ip> dev %%"'.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.network))
+                        commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<netmask>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.netmask))
+                        commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
+                        #print('Command Route to Onsite Network: ' + commandRouteToOnsiteNetwork)
+                        commands += [commandRouteToOnsiteNetwork]
         return commands
 
     def destroy(self):
