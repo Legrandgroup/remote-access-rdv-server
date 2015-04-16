@@ -219,8 +219,8 @@ Terminates this command-line session"""
         """
         return '\n'.join(self._get_vtun_shell_config())
     
-    def do_get_vtun_client_up_additionnal_commands(self, args):
-        """Usage: get_vtun_client_up_additionnal_commands
+    def do_get_vtun_client_up_additional_commands(self, args):
+        """Usage: get_vtun_client_up_additional_commands
         
         Get the command for the up block of client side configuration file of vtund
         
@@ -228,8 +228,8 @@ Terminates this command-line session"""
         """
         print('\n'.join(self._dbus_manager_iface.GetClientSideUpBlockCommands(self.username)))
         
-    def do_get_vtun_client_down_additionnal_commands(self, args):
-        """Usage: get_vtun_client_down_additionnal_commands
+    def do_get_vtun_client_down_additional_commands(self, args):
+        """Usage: get_vtun_client_down_additional_commands
         
         Get the command for the down block of client side configuration file of vtund
         
