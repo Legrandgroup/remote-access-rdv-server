@@ -27,7 +27,7 @@ import atexit
 from pythonvtunlib import server_vtun_tunnel
 from pythonvtunlib import client_vtun_tunnel
 from pythonvtunlib import tunnel_mode 
-from audioop import lin2adpcm
+
 import subprocess
 import ipaddr
 
@@ -755,4 +755,3 @@ It will also connects onsite to master tunnels to create an end-to-end session",
     
     # Loop
     dbus_loop.run()
-
