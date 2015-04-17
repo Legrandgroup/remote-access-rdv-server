@@ -576,12 +576,21 @@ class TundevManagerDBusService(dbus.service.Object):
                         os.system(rule.replace('<in>', str(session.onsite_dev_iface)).replace('<out>', str(session.master_dev_iface)))
                         
                         #Make the route
-                        #commandRouteToOnsiteNetwork = 'route add -net <far_ip> netmask <netmask> gw <gw_ip> dev <iface_name>'.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.network))
-                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<netmask>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.netmask))
-                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<iface_name>', str(session.onsite_dev_iface))
-                        #print(commandRouteToOnsiteNetwork)
-                        #os.system(commandRouteToOnsiteNetwork)
+                        commands = []
+                        #from tun_to_rpi1100 to tun_to_rpi1101
+                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
+                        commandAddRoute = '/sbin/ip route add table 1 dev ' + str(session.onsite_dev_iface) + ' default via ' + gateway
+                        commands += [commandAddRoute]
+                        commandAddRule = '/sbin/ip rule add unicast iif ' + str(session.master_dev_iface) + ' table 1'
+                        commands += [commandAddRule]
+                        #from tun_to_rpi1101 to tun_to_rpi1100
+                        gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
+                        commandAddRoute = '/sbin/ip route add table 2 dev ' + str(session.master_dev_iface) + ' default via ' + gateway 
+                        commands += [commandAddRoute]
+                        commandAddRule = '/sbin/ip rule add unicast iif ' + str(session.onsite_dev_iface) + ' table 2'
+                        commands += [commandAddRule]
+                        for command in commands:
+                            os.system(str(command))# + ' > /dev/null 2>&1')
                         
                     if previous_status == 'up' and session.get_status() == 'in-progress':
                         #print('Breaking the glue for session ' + str(session))
@@ -608,12 +617,20 @@ class TundevManagerDBusService(dbus.service.Object):
                             os.system('sysctl net.ipv4.ip_forward=0  > /dev/null 2>&1') #Disabling routing in kernel
                             
                         #Delete the route
-                        #commandRouteToOnsiteNetwork = 'route del -net <far_ip> netmask <netmask> gw <gw_ip> dev <iface_name>'.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.network))
-                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<netmask>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.netmask))
-                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        #commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<iface_name>', str(session.onsite_dev_iface))
-                        #print(commandRouteToOnsiteNetwork)
-                        #os.system(commandRouteToOnsiteNetwork)
+                         #from tun_to_rpi1100 to tun_to_rpi1101
+                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
+                        commandAddRoute = '/sbin/ip route del table 1 dev ' + str(session.onsite_dev_iface) + ' default via ' + gateway
+                        commands += [commandAddRoute]
+                        commandAddRule = '/sbin/ip rule del unicast iif ' + str(session.master_dev_iface) + ' table 1'
+                        commands += [commandAddRule]
+                        #from tun_to_rpi1101 to tun_to_rpi1100
+                        gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
+                        commandAddRoute = '/sbin/ip route del table 2 dev ' + str(session.master_dev_iface) + ' default via ' + gateway
+                        commands += [commandAddRoute]
+                        commandAddRule = '/sbin/ip rule del unicast iif ' + str(session.onsite_dev_iface) + ' table 2'
+                        commands += [commandAddRule]
+                        for command in commands:
+                            os.system(str(command))# + ' > /dev/null 2>&1')
                     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpSessions(self):
@@ -640,21 +657,28 @@ class TundevManagerDBusService(dbus.service.Object):
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
                 for session in self._session_pool:
-                    command = '/sbin/route "add <far_ip> gw <gw_ip> dev %%"'
+                    
                     if session.onsite_dev_id == username:
-                        commandRouteInsideTunnel = command.replace('<far_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
-                        commandRouteInsideTunnel = commandRouteInsideTunnel.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        commands += [commandRouteInsideTunnel]
+                        #from eth0 to tun0
+                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                        commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
+                        commands += [commandAddRoute]
+                        commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
+                        commands += [commandAddRule]
+                        commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
+                        commands += [commandActivateRouting]
                         
                     elif session.master_dev_id == username:
-                        commandRouteInsideTunnel = command.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
-                        commandRouteInsideTunnel = commandRouteInsideTunnel.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        commands += [commandRouteInsideTunnel]
-                        commandRouteToOnsiteNetwork = '/sbin/route "add -net <far_ip> netmask <netmask> gw <gw_ip> dev %%"'.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.network))
-                        commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<netmask>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.netmask))
-                        commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        #print('Command Route to Onsite Network: ' + commandRouteToOnsiteNetwork)
-                        commands += [commandRouteToOnsiteNetwork]
+                        #from eth0 to tun0
+                        gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                        commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
+                        commands += [commandAddRoute]
+                        commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
+                        commands += [commandAddRule]
+                        commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
+                        commands += [commandActivateRouting]
+                        #will have to consider eth1 there and route from tun0 to eth1
+                        #no need to do this with eth0 since it's configured by dhcp
         return commands
     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='as')
@@ -668,21 +692,27 @@ class TundevManagerDBusService(dbus.service.Object):
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
                 for session in self._session_pool:
-                    command = '/sbin/route "del <far_ip> gw <gw_ip> dev %%"'
                     if session.onsite_dev_id == username:
-                        commandRouteInsideTunnel = command.replace('<far_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
-                        commandRouteInsideTunnel = commandRouteInsideTunnel.replace('<gw_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        commands += [commandRouteInsideTunnel]
+                        #from eth0 to tun0
+                        commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
+                        commands += [commandActivateRouting]
+                        commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
+                        commands += [commandAddRule]
+                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                        commandAddRoute = '/sbin/ip "route del table 1 dev %% default via ' + gateway + '"'
+                        commands += [commandAddRoute]
                         
                     elif session.master_dev_id == username:
-                        commandRouteInsideTunnel = command.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip))
-                        commandRouteInsideTunnel = commandRouteInsideTunnel.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        commands += [commandRouteInsideTunnel]
-                        commandRouteToOnsiteNetwork = '/sbin/route "del -net <far_ip> netmask <netmask> gw <gw_ip> dev %%"'.replace('<far_ip>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.network))
-                        commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<netmask>', str(self._tundev_dict[session.onsite_dev_id].lan_ip.netmask))
-                        commandRouteToOnsiteNetwork = commandRouteToOnsiteNetwork.replace('<gw_ip>', str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip))
-                        #print('Command Route to Onsite Network: ' + commandRouteToOnsiteNetwork)
-                        commands += [commandRouteToOnsiteNetwork]
+                        #from eth0 to tun0
+                        commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
+                        commands += [commandActivateRouting]
+                        commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
+                        commands += [commandAddRule]
+                        gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                        commandAddRoute = '/sbin/ip "route del table 1 dev %% default via ' + gateway + '"'
+                        commands += [commandAddRoute]
+                        #will have to consider eth1 there and route from tun0 to eth1
+                        #no need to do this with eth0 since it's configured by dhcp
         return commands
 
     def destroy(self):
