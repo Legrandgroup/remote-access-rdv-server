@@ -659,6 +659,11 @@ class TundevManagerDBusService(dbus.service.Object):
                 for session in self._session_pool:
                     
                     if session.onsite_dev_id == username:
+                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                        commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
+                        commands += [commandAddRoute]
+                        commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
+                        commands += [commandAddRule]
                         #We activate routing
                         commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
                         commands += [commandActivateRouting]
@@ -700,6 +705,12 @@ class TundevManagerDBusService(dbus.service.Object):
                         #We deactivate routing
                         commandDeactivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
                         commands += [commandDeactivateRouting]
+                        commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
+                        commands += [commandAddRule]
+                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                        commandAddRoute = '/sbin/ip "route del table 1 dev %% default via ' + gateway + '"'
+                        commands += [commandAddRoute]
+                       
                         
                     elif session.master_dev_id == username:
                         #from eth0 to tun0
