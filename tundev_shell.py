@@ -217,7 +217,16 @@ Terminates this command-line session"""
         
         \return A multi-line config used for shell output
         """
-        return '\n'.join(self._get_vtun_shell_config())
+        result = '\n'.join(self._get_vtun_shell_config())
+        up_commands = '\nup_additionnal_commands:'
+        for command in self._dbus_manager_iface.GetClientSideUpBlockCommands(self.username):
+            up_commands += str(command) + ';'
+        result += up_commands
+        down_commands = '\ndown_additionnal_commands:'
+        for command in self._dbus_manager_iface.GetClientSideDownBlockCommands(self.username):
+            down_commands += str(command) + ';'
+        result += down_commands
+        return result;
     
     def do_get_vtun_client_up_additional_commands(self, args):
         """Usage: get_vtun_client_up_additional_commands
