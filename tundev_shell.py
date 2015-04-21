@@ -219,12 +219,10 @@ Terminates this command-line session"""
         """
         result = '\n'.join(self._get_vtun_shell_config())
         up_commands = '\nup_additional_commands: '
-        for command in self._dbus_manager_iface.GetClientSideUpBlockCommands(self.username):
-            up_commands += str(command) + ';'
+        up_commands += ';'.join(self._dbus_manager_iface.GetClientSideUpBlockCommands(self.username))
         result += up_commands
         down_commands = '\ndown_additional_commands: '
-        for command in self._dbus_manager_iface.GetClientSideDownBlockCommands(self.username):
-            down_commands += str(command) + ';'
+        down_commands += ';'.join(self._dbus_manager_iface.GetClientSideDownBlockCommands(self.username))
         result += down_commands
         return result;
     
