@@ -234,7 +234,6 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     def StopTunnelServer(self):
         """ Stop a vtund server to handle connectivity with this tunnelling device
         """
-        
         logger.debug('/' + self.username + ' Got StopTunnelServer() D-Bus request')
         self.stop_vtun_server()
     
@@ -617,21 +616,22 @@ class TundevManagerDBusService(dbus.service.Object):
                             os.system('sysctl net.ipv4.ip_forward=0  > /dev/null 2>&1') #Disabling routing in kernel
                             
                         #Delete the route
-                         #from tun_to_rpi1100 to tun_to_rpi1101
+                        #from tun_to_rpi1100 to tun_to_rpi1101
+                        commands = []
                         gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
-                        commandAddRoute = '/sbin/ip route del table 1 dev ' + str(session.onsite_dev_iface) + ' default via ' + gateway
+                        commandAddRoute = '/sbin/ip route del table 1 dev ' + str(onsite_dev_iface) + ' default via ' + gateway
                         commands += [commandAddRoute]
-                        commandAddRule = '/sbin/ip rule del unicast iif ' + str(session.master_dev_iface) + ' table 1'
+                        commandAddRule = '/sbin/ip rule del unicast iif ' + str(master_dev_iface) + ' table 1'
                         commands += [commandAddRule]
                         #from tun_to_rpi1101 to tun_to_rpi1100
                         gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
-                        commandAddRoute = '/sbin/ip route del table 2 dev ' + str(session.master_dev_iface) + ' default via ' + gateway
+                        commandAddRoute = '/sbin/ip route del table 2 dev ' + str(master_dev_iface) + ' default via ' + gateway
                         commands += [commandAddRoute]
-                        commandAddRule = '/sbin/ip rule del unicast iif ' + str(session.onsite_dev_iface) + ' table 2'
+                        commandAddRule = '/sbin/ip rule del unicast iif ' + str(onsite_dev_iface) + ' table 2'
                         commands += [commandAddRule]
                         for command in commands:
                             os.system(str(command))# + ' > /dev/null 2>&1')
-                    
+                            
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpSessions(self):
         """ Dump all TundevBindingDBusService objects registerd
