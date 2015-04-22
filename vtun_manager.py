@@ -631,6 +631,15 @@ class TundevManagerDBusService(dbus.service.Object):
                         commands += [commandAddRule]
                         for command in commands:
                             os.system(str(command))# + ' > /dev/null 2>&1')
+                    
+                        #When we lost one of the tunnels, we should stop the other tunnel too.
+                        if session.onsite_dev_id == device_id:
+                            #The onsite fall, so we end the master as well
+                            self._tundev_dict[session.master_dev_id].vtunService.StopTunnelServer()
+                            
+                        if session.master_dev_id == device_id:
+                            #The master fall, so we end the onsite as well
+                            self._tundev_dict[session.onsite_dev_id].vtunService.StopTunnelServer()
                             
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpSessions(self):
