@@ -542,6 +542,16 @@ class TundevManagerDBusService(dbus.service.Object):
             with self._session_pool_mutex:
                 for session in self._session_pool:
                     previous_status = session.get_status()
+                    session_tunnel_mode = None
+                    if (self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'  and 
+                        self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'):
+                        session_tunnel_mode = 'L3'
+                    elif (self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2'  and 
+                        self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2'):
+                        session_tunnel_mode = 'L2'
+                    else:
+                        session_tunnel_mode = 'invalid'
+                        
                     if session.master_dev_id == device_id:
                         if status == 'up':
                             session.master_dev_iface = iface_name
@@ -557,81 +567,83 @@ class TundevManagerDBusService(dbus.service.Object):
                     #print('Current status of session ' + str(session) + ': ' + session.get_status())
                     if previous_status == 'in-progress' and session.get_status() == 'up':
                         #print('Making the glue for session ' + str(session))
-                        #Make the glue between tunnels here
-                        #1 Check if the kernel is routing at IP level
-                        p = subprocess.Popen('sysctl net.ipv4.ip_forward', shell=True, stdout=subprocess.PIPE) 
-                        out = p.communicate()[0]
-                        #out = subprocess.check_output('sysctl net.ipv4.ip_forward', shell=True)
-                        routingEnabled = False
-                        if str(out).split(' = ')[1] == '1':
-                            routingEnabled = True
-                        #2 If not, activate this feature
-                        if not routingEnabled: #Routing not enabled in kernel
-                            os.system('sysctl net.ipv4.ip_forward=1 > /dev/null 2>&1') #Enabling routing in kernel
-                        #3 Add a rule to allow trafic from master interface to onsite interface
-                        rule = 'iptables -A FORWARD -i <in> -o <out> -j ACCEPT'
-                        os.system(rule.replace('<in>', str(session.master_dev_iface)).replace('<out>', str(session.onsite_dev_iface)))
-                        #4 Add a rule to allow trafic from onsite interface to master interface
-                        os.system(rule.replace('<in>', str(session.onsite_dev_iface)).replace('<out>', str(session.master_dev_iface)))
-                        
-                        #Make the route
-                        commands = []
-                        #from tun_to_rpi1100 to tun_to_rpi1101
-                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
-                        commandAddRoute = '/sbin/ip route add table 1 dev ' + str(session.onsite_dev_iface) + ' default via ' + gateway
-                        commands += [commandAddRoute]
-                        commandAddRule = '/sbin/ip rule add unicast iif ' + str(session.master_dev_iface) + ' table 1'
-                        commands += [commandAddRule]
-                        #from tun_to_rpi1101 to tun_to_rpi1100
-                        gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
-                        commandAddRoute = '/sbin/ip route add table 2 dev ' + str(session.master_dev_iface) + ' default via ' + gateway 
-                        commands += [commandAddRoute]
-                        commandAddRule = '/sbin/ip rule add unicast iif ' + str(session.onsite_dev_iface) + ' table 2'
-                        commands += [commandAddRule]
-                        for command in commands:
-                            os.system(str(command))# + ' > /dev/null 2>&1')
+                        if session_tunnel_mode == 'L3':
+                            #Make the glue between tunnels here
+                            #1 Check if the kernel is routing at IP level
+                            p = subprocess.Popen('sysctl net.ipv4.ip_forward', shell=True, stdout=subprocess.PIPE) 
+                            out = p.communicate()[0]
+                            #out = subprocess.check_output('sysctl net.ipv4.ip_forward', shell=True)
+                            routingEnabled = False
+                            if str(out).split(' = ')[1] == '1':
+                                routingEnabled = True
+                            #2 If not, activate this feature
+                            if not routingEnabled: #Routing not enabled in kernel
+                                os.system('sysctl net.ipv4.ip_forward=1 > /dev/null 2>&1') #Enabling routing in kernel
+                            #3 Add a rule to allow trafic from master interface to onsite interface
+                            rule = 'iptables -A FORWARD -i <in> -o <out> -j ACCEPT'
+                            os.system(rule.replace('<in>', str(session.master_dev_iface)).replace('<out>', str(session.onsite_dev_iface)))
+                            #4 Add a rule to allow trafic from onsite interface to master interface
+                            os.system(rule.replace('<in>', str(session.onsite_dev_iface)).replace('<out>', str(session.master_dev_iface)))
+                            
+                            #Make the route
+                            commands = []
+                            #from tun_to_rpi1100 to tun_to_rpi1101
+                            gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
+                            commandAddRoute = '/sbin/ip route add table 1 dev ' + str(session.onsite_dev_iface) + ' default via ' + gateway
+                            commands += [commandAddRoute]
+                            commandAddRule = '/sbin/ip rule add unicast iif ' + str(session.master_dev_iface) + ' table 1'
+                            commands += [commandAddRule]
+                            #from tun_to_rpi1101 to tun_to_rpi1100
+                            gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
+                            commandAddRoute = '/sbin/ip route add table 2 dev ' + str(session.master_dev_iface) + ' default via ' + gateway 
+                            commands += [commandAddRoute]
+                            commandAddRule = '/sbin/ip rule add unicast iif ' + str(session.onsite_dev_iface) + ' table 2'
+                            commands += [commandAddRule]
+                            for command in commands:
+                                os.system(str(command))# + ' > /dev/null 2>&1')
                         
                     if previous_status == 'up' and session.get_status() == 'in-progress':
                         #print('Breaking the glue for session ' + str(session))
-                        #Break the glue between the tunnels here
-                        #1 Remove iptables rule to allow trafic from master interface to onsite interface
-                        rule = 'iptables -D FORWARD -i <in> -o <out> -j ACCEPT  > /dev/null 2>&1'
-                        master_dev_iface = session.master_dev_iface
-                        onsite_dev_iface = session.onsite_dev_iface
-                        if master_dev_iface is None:
-                            master_dev_iface = iface_name
-                        if onsite_dev_iface is None:
-                            onsite_dev_iface = iface_name
-                        os.system(rule.replace('<in>', str(master_dev_iface)).replace('<out>', str(onsite_dev_iface)))
-                        #2 Remove iptables rule to allow trafic from onsite interface to master interface
-                        os.system(rule.replace('<in>', str(onsite_dev_iface)).replace('<out>', str(master_dev_iface)))
-                        #3 If there is no more sessions, disable routing in kernel
-                        disableRouting = True
-                        for session in self._session_pool:
-                            #print('Session ' + str(session) + ' status is ' + session.get_status())
-                            if session.get_status() == 'up':
-                                disableRouting = False
-                        if disableRouting:
-                            #print('Disabling routing')
-                            os.system('sysctl net.ipv4.ip_forward=0  > /dev/null 2>&1') #Disabling routing in kernel
-                            
-                        #Delete the route
-                        #from tun_to_rpi1100 to tun_to_rpi1101
-                        commands = []
-                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
-                        commandAddRoute = '/sbin/ip route del table 1 dev ' + str(onsite_dev_iface) + ' default via ' + gateway
-                        commands += [commandAddRoute]
-                        commandAddRule = '/sbin/ip rule del unicast iif ' + str(master_dev_iface) + ' table 1'
-                        commands += [commandAddRule]
-                        #from tun_to_rpi1101 to tun_to_rpi1100
-                        gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
-                        commandAddRoute = '/sbin/ip route del table 2 dev ' + str(master_dev_iface) + ' default via ' + gateway
-                        commands += [commandAddRoute]
-                        commandAddRule = '/sbin/ip rule del unicast iif ' + str(onsite_dev_iface) + ' table 2'
-                        commands += [commandAddRule]
-                        for command in commands:
-                            os.system(str(command))# + ' > /dev/null 2>&1')
-                    
+                        if session_tunnel_mode == 'L3':
+                            #Break the glue between the tunnels here
+                            #1 Remove iptables rule to allow trafic from master interface to onsite interface
+                            rule = 'iptables -D FORWARD -i <in> -o <out> -j ACCEPT  > /dev/null 2>&1'
+                            master_dev_iface = session.master_dev_iface
+                            onsite_dev_iface = session.onsite_dev_iface
+                            if master_dev_iface is None:
+                                master_dev_iface = iface_name
+                            if onsite_dev_iface is None:
+                                onsite_dev_iface = iface_name
+                            os.system(rule.replace('<in>', str(master_dev_iface)).replace('<out>', str(onsite_dev_iface)))
+                            #2 Remove iptables rule to allow trafic from onsite interface to master interface
+                            os.system(rule.replace('<in>', str(onsite_dev_iface)).replace('<out>', str(master_dev_iface)))
+                            #3 If there is no more sessions, disable routing in kernel
+                            disableRouting = True
+                            for session in self._session_pool:
+                                #print('Session ' + str(session) + ' status is ' + session.get_status())
+                                if session.get_status() == 'up':
+                                    disableRouting = False
+                            if disableRouting:
+                                #print('Disabling routing')
+                                os.system('sysctl net.ipv4.ip_forward=0  > /dev/null 2>&1') #Disabling routing in kernel
+                                
+                            #Delete the route
+                            #from tun_to_rpi1100 to tun_to_rpi1101
+                            commands = []
+                            gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
+                            commandAddRoute = '/sbin/ip route del table 1 dev ' + str(onsite_dev_iface) + ' default via ' + gateway
+                            commands += [commandAddRoute]
+                            commandAddRule = '/sbin/ip rule del unicast iif ' + str(master_dev_iface) + ' table 1'
+                            commands += [commandAddRule]
+                            #from tun_to_rpi1101 to tun_to_rpi1100
+                            gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_near_end_ip)
+                            commandAddRoute = '/sbin/ip route del table 2 dev ' + str(master_dev_iface) + ' default via ' + gateway
+                            commands += [commandAddRoute]
+                            commandAddRule = '/sbin/ip rule del unicast iif ' + str(onsite_dev_iface) + ' table 2'
+                            commands += [commandAddRule]
+                            for command in commands:
+                                os.system(str(command))# + ' > /dev/null 2>&1')
+                        
                         #When we lost one of the tunnels, we should stop the other tunnel too.
                         if session.onsite_dev_id == device_id:
                             #The onsite fall, so we end the master as well
@@ -666,33 +678,35 @@ class TundevManagerDBusService(dbus.service.Object):
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
                 for session in self._session_pool:
-                    
-                    if session.onsite_dev_id == username:
-                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
-                        commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
-                        commands += [commandAddRoute]
-                        commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
-                        commands += [commandAddRule]
-                        #We activate routing
-                        commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
-                        commands += [commandActivateRouting]
-                        #Adding the nat rule for iptables
-                        network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
-                        commandMasquerade = '/sbin/iptables "-t nat -A POSTROUTING -o eth0 -j MASQUERADE"'
-                        commands += [commandMasquerade]
-                        
-                        
-                    elif session.master_dev_id == username:
-                        #from eth0 to tun0
-                        gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
-                        commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
-                        commands += [commandAddRoute]
-                        commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
-                        commands += [commandAddRule]
-                        commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
-                        commands += [commandActivateRouting]
-                        #FIXME: will have to consider eth1 there and route from tun0 to eth1
-                        #no need to do this with eth0 since it's configured by dhcp
+                    if self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
+                        if (session.onsite_dev_id == username and
+                            self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'):
+                            gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                            commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
+                            commands += [commandAddRoute]
+                            commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
+                            commands += [commandAddRule]
+                            #We activate routing
+                            commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
+                            commands += [commandActivateRouting]
+                            #Adding the nat rule for iptables
+                            network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
+                            commandMasquerade = '/sbin/iptables "-t nat -A POSTROUTING -o eth0 -j MASQUERADE"'
+                            commands += [commandMasquerade]
+                            
+                            
+                        elif (session.master_dev_id == username and
+                              self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'):
+                            #from eth0 to tun0
+                            gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                            commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
+                            commands += [commandAddRoute]
+                            commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
+                            commands += [commandAddRule]
+                            commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
+                            commands += [commandActivateRouting]
+                            #FIXME: will have to consider eth1 there and route from tun0 to eth1
+                            #no need to do this with eth0 since it's configured by dhcp
         return commands
     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='as')
@@ -706,7 +720,8 @@ class TundevManagerDBusService(dbus.service.Object):
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
                 for session in self._session_pool:
-                    if session.onsite_dev_id == username:
+                    if (session.onsite_dev_id == username and
+                        self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'):
                         #Removing nat rule for iptables
                         network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
                         commandMasquerade = '/sbin/iptables "-t nat -D POSTROUTING -o eth0 -j MASQUERADE"'
@@ -721,7 +736,8 @@ class TundevManagerDBusService(dbus.service.Object):
                         commands += [commandAddRoute]
                        
                         
-                    elif session.master_dev_id == username:
+                    elif (session.master_dev_id == username and
+                        self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'):
                         #from eth0 to tun0
                         commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
                         commands += [commandActivateRouting]
