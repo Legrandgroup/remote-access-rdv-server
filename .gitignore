@@ -1,2 +1,5 @@
 # Ignore .pyc files
 *.pyc
+# Eclipse pydev files
+.project
+.pydevproject
