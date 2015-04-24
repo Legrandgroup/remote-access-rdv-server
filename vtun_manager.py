@@ -450,24 +450,57 @@ class TundevManagerDBusService(dbus.service.Object):
         \param username Username of the account used by the tunnelling device
         """
         with self._tundev_dict_mutex:
+            #Unregistering the device
             logger.debug('Unregistering binding for username ' + str(username))
+            tundev_binding = None
             try:
                 #Destroy the TundevBinding
-                self._tundev_dict[username].destroy()
+                tundev_binding = self._tundev_dict[username]
+                tundev_binding.destroy()
                 #Clean the dictionary of registered devices
                 del self._tundev_dict[username]
+            except KeyError:
+                pass
+
+            if not tundev_binding is None:        
                 #Clean the registered sessions that include the unregistered device
                 with self._session_pool_mutex:
-                    indexesToDelete = []
                     def isPartOfSession(session, username):
                         if session.onsite_dev_id == username or session.master_dev_id == username:
                             return True
                         else:
                             return False
+                    
+                    def getOtherMember(session, username):
+                        if session.onsite_dev_id == username:
+                            return session.master_dev_id
+                        else:
+                            return session.onsite_dev_id
+                      
+                    #Looking for its session partner name
+                    to_remove = None
+                    for session in self._session_pool:
+                        if isPartOfSession(session, username):
+                            to_remove = getOtherMember(session, username)
+                            break
+                        
+                    
+                    
+                    
                     #We only keep the session that don't have the unregistered username as a member (either master or onsite)
                     self._session_pool = [s for s in self._session_pool if not isPartOfSession(s, username)]
-            except:
-                pass
+                    
+                    #We set down the other session partner
+                    if not to_remove is None:
+                        #logger.debug('to_remove is not None')
+                        if self._tundev_dict[to_remove]:
+                            #logger.debug('to_remove is in dict')
+                            if not self._tundev_dict[to_remove].vtunService.vtun_server_tunnel is None:
+                                #logger.debug('to_remove vtun server tunnel is not None')
+                                self._tundev_dict[to_remove].vtunService.vtun_server_tunnel.stop()
+                                
+                    logger.debug('Sessions pool after unregister ' + str(self._session_pool))
+            
     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpTundevBindings(self):
@@ -501,27 +534,30 @@ class TundevManagerDBusService(dbus.service.Object):
         \param master_dev_id The master device identifier
         \param onsite_dev_id The onsite device identifier
         """
-        
-        with self._session_pool_mutex:
-            try:
-                self._tundev_dict[master_dev_id]
-            except:
-                raise Exception('MasterDeviceIsNotRegistered')
+        with self._tundev_dict_mutex:
+            with self._session_pool_mutex:
+                try:
+                    self._tundev_dict[master_dev_id]
+                except:
+                    raise Exception('MasterDeviceIsNotRegistered')
+                    
+                try:
+                    self._tundev_dict[onsite_dev_id]
+                except:
+                    raise Exception('OnsiteDeviceIsNotRegistered')
                 
-            try:
-                self._tundev_dict[onsite_dev_id]
-            except:
-                raise Exception('OnsiteDeviceIsNotRegistered')
-            
-            toConnect = Session(master_dev_id, onsite_dev_id)
-            for session in self._session_pool:
-                print(session == toConnect)
-                if session == toConnect:
-                    raise Exception('DevicesAlreadyConnected')
-            
-            self._session_pool += [toConnect]
-            #Allow the client to obtain its vtun configuration
-            self._tundev_dict[onsite_dev_id].vtunService.VtunAllowedSignal()
+                toConnect = Session(master_dev_id, onsite_dev_id)
+                for session in self._session_pool:
+                    print(session == toConnect)
+                    if session == toConnect:
+                        raise Exception('DevicesAlreadyConnected')
+                
+                self._session_pool += [toConnect]
+                #Set the onsite tunnel level to the one requested by the master
+                mode = self._tundev_dict[master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode()
+                self._tundev_dict[onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.set_mode(mode)
+                #Allow the client to obtain its vtun configuration
+                self._tundev_dict[onsite_dev_id].vtunService.VtunAllowedSignal()
         
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sss', out_signature='')
     def TunnelInterfaceStatusUpdate(self, device_id, iface_name, status):
@@ -551,7 +587,9 @@ class TundevManagerDBusService(dbus.service.Object):
                         session_tunnel_mode = 'L2'
                     else:
                         session_tunnel_mode = 'invalid'
-                        
+                    
+                    logger.debug('Session tunnel mode is ' + str(session_tunnel_mode))
+                    
                     if session.master_dev_id == device_id:
                         if status == 'up':
                             session.master_dev_iface = iface_name
@@ -562,7 +600,7 @@ class TundevManagerDBusService(dbus.service.Object):
                             session.onsite_dev_iface = iface_name
                         if status == 'down':
                             session.onsite_dev_iface = None
-                    #print('DBusCall: TunnelInterfaceStatusUpdate -> ' + iface_name + ' to communicate with ' + device_id + ' is now ' + status)
+                    logger.debug('DBusCall: TunnelInterfaceStatusUpdate -> ' + iface_name + ' to communicate with ' + device_id + ' is now ' + status)
                     #print('Previous status of session ' + str(session) + ': ' + previous_status)
                     #print('Current status of session ' + str(session) + ': ' + session.get_status())
                     if previous_status == 'in-progress' and session.get_status() == 'up':
@@ -645,13 +683,18 @@ class TundevManagerDBusService(dbus.service.Object):
                                 os.system(str(command))# + ' > /dev/null 2>&1')
                         
                         #When we lost one of the tunnels, we should stop the other tunnel too.
+                        logger.debug(device_id + ' goes down, stopp vtun for other device')
                         if session.onsite_dev_id == device_id:
                             #The onsite fall, so we end the master as well
+                            #print(device_id + 'is onsite, stopping master ' + session.master_dev_id)
                             self._tundev_dict[session.master_dev_id].vtunService.StopTunnelServer()
+                            #print('...done')
                             
                         if session.master_dev_id == device_id:
                             #The master fall, so we end the onsite as well
+                            #print(device_id + 'is master, stopping onsite ' + session.onsite_dev_id)
                             self._tundev_dict[session.onsite_dev_id].vtunService.StopTunnelServer()
+                            #print('...done')
                             
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='as')
     def DumpSessions(self):
