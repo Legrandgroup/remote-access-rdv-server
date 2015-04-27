@@ -426,7 +426,7 @@ class TundevManagerDBusService(dbus.service.Object):
         new_binding_object_path = DBUS_OBJECT_ROOT + '/' + username
         
         with self._tundev_dict_mutex:
-            logger.debug('Registering binding for username ' + str(username))
+            logger.debug('Registering binding for username ' + str(username) + '(' + username + ', ' + mode + ', ' + uplink_ip + ')')
             old_binding = self._tundev_dict.pop(username, None)
             if not old_binding is None:
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
@@ -436,7 +436,7 @@ class TundevManagerDBusService(dbus.service.Object):
             new_binding.vtunService = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
             new_binding.shellAliveWatchdog = TunDevShellWatchdog(shell_alive_lock_fn)
             new_binding.shellAliveWatchdog.set_unlock_callback(self.UnregisterTundevBinding, username)
-                
+            
             self._tundev_dict[username] = new_binding
         
         self._tundev_dict[username].vtunService.configure_service(mode, uplink_ip)
@@ -639,19 +639,32 @@ class TundevManagerDBusService(dbus.service.Object):
                             commands += [commandAddRule]
                             for command in commands:
                                 os.system(str(command))# + ' > /dev/null 2>&1')
-                        
+                        if session_tunnel_mode == 'L2':
+                            commandCreateBridge = '/sbin/brctl addbr br0'
+                            commandAddUplinkIfaceToBridge = '/sbin/brctl addif br0 ' + str(session.onsite_dev_iface) 
+                            commandAddTunnelIfaceToBridge = '/sbin/brctl addif br0 ' + str(session.master_dev_iface)
+                            commandSetBridgeUp = '/sbin/ip link set br0 up'
+                            os.system(commandCreateBridge)
+                            os.system(commandAddUplinkIfaceToBridge)
+                            os.system(commandAddTunnelIfaceToBridge)
+                            os.system(commandSetBridgeUp)
+                            
+                            rule = 'iptables -A FORWARD -i br0 -j ACCEPT'
+                            os.system(rule)
+                            
                     if previous_status == 'up' and session.get_status() == 'in-progress':
                         #print('Breaking the glue for session ' + str(session))
+                        master_dev_iface = session.master_dev_iface
+                        onsite_dev_iface = session.onsite_dev_iface
+                        if master_dev_iface is None:
+                            master_dev_iface = iface_name
+                        if onsite_dev_iface is None:
+                            onsite_dev_iface = iface_name
                         if session_tunnel_mode == 'L3':
                             #Break the glue between the tunnels here
                             #1 Remove iptables rule to allow trafic from master interface to onsite interface
                             rule = 'iptables -D FORWARD -i <in> -o <out> -j ACCEPT  > /dev/null 2>&1'
-                            master_dev_iface = session.master_dev_iface
-                            onsite_dev_iface = session.onsite_dev_iface
-                            if master_dev_iface is None:
-                                master_dev_iface = iface_name
-                            if onsite_dev_iface is None:
-                                onsite_dev_iface = iface_name
+                            
                             os.system(rule.replace('<in>', str(master_dev_iface)).replace('<out>', str(onsite_dev_iface)))
                             #2 Remove iptables rule to allow trafic from onsite interface to master interface
                             os.system(rule.replace('<in>', str(onsite_dev_iface)).replace('<out>', str(master_dev_iface)))
@@ -681,6 +694,18 @@ class TundevManagerDBusService(dbus.service.Object):
                             commands += [commandAddRule]
                             for command in commands:
                                 os.system(str(command))# + ' > /dev/null 2>&1')
+                        
+                        if session_tunnel_mode == 'L2':
+                            rule = 'iptables -D FORWARD -i br0 -j ACCEPT'
+                            os.system(rule)
+                            commandSetBridgeDown = '/sbin/ifconfig br0 down'
+                            commandRemoveTunnelIfaceFromBridge = '/sbin/brctl delif br0 ' + str(master_dev_iface)
+                            commandRemoveUplinkIfaceFromBridge = '/sbin/brctl delif br0 ' + str(onsite_dev_iface)
+                            commandDeleteBridge = '/sbin/brctl delbr br0'
+                            os.system(commandSetBridgeDown)
+                            os.system(commandRemoveTunnelIfaceFromBridge)
+                            os.system(commandRemoveUplinkIfaceFromBridge)
+                            os.system(commandDeleteBridge)
                         
                         #When we lost one of the tunnels, we should stop the other tunnel too.
                         logger.debug(device_id + ' goes down, stopp vtun for other device')
@@ -721,35 +746,53 @@ class TundevManagerDBusService(dbus.service.Object):
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
                 for session in self._session_pool:
-                    if self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
-                        if (session.onsite_dev_id == username and
-                            self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'):
-                            gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
-                            commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
-                            commands += [commandAddRoute]
-                            commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
-                            commands += [commandAddRule]
-                            #We activate routing
-                            commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
-                            commands += [commandActivateRouting]
-                            #Adding the nat rule for iptables
-                            network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
-                            commandMasquerade = '/sbin/iptables "-t nat -A POSTROUTING -o eth0 -j MASQUERADE"'
-                            commands += [commandMasquerade]
+                        if session.onsite_dev_id == username:
+                            if self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
+                                gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                                commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
+                                commands += [commandAddRoute]
+                                commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
+                                commands += [commandAddRule]
+                                #We activate routing
+                                commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
+                                commands += [commandActivateRouting]
+                                #Adding the nat rule for iptables
+                                network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
+                                commandMasquerade = '/sbin/iptables "-t nat -A POSTROUTING -o eth0 -j MASQUERADE"'
+                                commands += [commandMasquerade]
+                            elif self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
+                                commandCreateBridge = '/sbin/brctl "addbr br0"'
+                                commands += [commandCreateBridge]
+                                commandAddUplinkIfaceToBridge = '/sbin/brctl "addif br0 eth0"'
+                                commands += [commandAddUplinkIfaceToBridge]
+                                commandAddTunnelIfaceToBridge = '/sbin/brctl "addif br0 tap0"'
+                                commands += [commandAddTunnelIfaceToBridge]
+                                commandSetBridgeUp = '/sbin/ip "link set br0 up"'
+                                commands += [commandSetBridgeUp]
+                                
                             
-                            
-                        elif (session.master_dev_id == username and
-                              self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'):
-                            #from eth0 to tun0
-                            gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
-                            commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
-                            commands += [commandAddRoute]
-                            commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
-                            commands += [commandAddRule]
-                            commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
-                            commands += [commandActivateRouting]
-                            #FIXME: will have to consider eth1 there and route from tun0 to eth1
-                            #no need to do this with eth0 since it's configured by dhcp
+                        elif session.master_dev_id == username:
+                            if self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
+                                #from eth0 to tun0
+                                gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                                commandAddRoute = '/sbin/ip "route add table 1 dev %% default via ' + gateway + '"'
+                                commands += [commandAddRoute]
+                                commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
+                                commands += [commandAddRule]
+                                commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
+                                commands += [commandActivateRouting]
+                                #FIXME: will have to consider eth1 there and route from tun0 to eth1
+                                #no need to do this with eth0 since it's configured by dhcp
+                            elif self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
+                                commandCreateBridge = '/sbin/brctl "addbr br0"'
+                                commands += [commandCreateBridge]
+                                commandAddUplinkIfaceToBridge = '/sbin/brctl "addif br0 eth1"'
+                                commands += [commandAddUplinkIfaceToBridge]
+                                commandAddTunnelIfaceToBridge = '/sbin/brctl "addif br0 tap0"'
+                                commands += [commandAddTunnelIfaceToBridge]
+                                commandSetBridgeUp = '/sbin/ip "link set br0 up"'
+                                commands += [commandSetBridgeUp]
+                                
         return commands
     
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='as')
@@ -763,34 +806,55 @@ class TundevManagerDBusService(dbus.service.Object):
         with self._tundev_dict_mutex:
             with self._session_pool_mutex:
                 for session in self._session_pool:
-                    if (session.onsite_dev_id == username and
-                        self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'):
-                        #Removing nat rule for iptables
-                        network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
-                        commandMasquerade = '/sbin/iptables "-t nat -D POSTROUTING -o eth0 -j MASQUERADE"'
-                        commands += [commandMasquerade]
-                        #We deactivate routing
-                        commandDeactivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
-                        commands += [commandDeactivateRouting]
-                        commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
-                        commands += [commandAddRule]
-                        gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
-                        commandAddRoute = '/sbin/ip "route del table 1 dev %% default via ' + gateway + '"'
-                        commands += [commandAddRoute]
-                       
+                    if session.onsite_dev_id == username:
+                        if self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
+                            #Removing nat rule for iptables
+                            network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
+                            commandMasquerade = '/sbin/iptables "-t nat -D POSTROUTING -o eth0 -j MASQUERADE"'
+                            commands += [commandMasquerade]
+                            #We deactivate routing
+                            commandDeactivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
+                            commands += [commandDeactivateRouting]
+                            commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
+                            commands += [commandAddRule]
+                            gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                            commandAddRoute = '/sbin/ip "route del table 1 dev %% default via ' + gateway + '"'
+                            commands += [commandAddRoute]
+                        elif self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
+                            commandSetBridgeDown = '/sbin/ip "link set br0 down"'
+                            commands += [commandSetBridgeDown]
+                            commandRemoveTunnelIfaceFromBridge = '/sbin/brctl "delif br0 tap0"'
+                            commands += [commandRemoveTunnelIfaceFromBridge]
+                            commandRemoveUplinkIfaceFromBridge = '/sbin/brctl "delif br0 eth0"'
+                            commands += [commandRemoveUplinkIfaceFromBridge]
+                            commandUnloadModule = '/sbin/modprobe "-r bridge"'
+                            commands += [commandUnloadModule]
+                            commandLoadModule = '/sbin/modprobe "bridge"'
+                            commands += [commandLoadModule]
                         
-                    elif (session.master_dev_id == username and
-                        self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3'):
-                        #from eth0 to tun0
-                        commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
-                        commands += [commandActivateRouting]
-                        commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
-                        commands += [commandAddRule]
-                        gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
-                        commandAddRoute = '/sbin/ip "route del table 1 dev %% default via ' + gateway + '"'
-                        commands += [commandAddRoute]
-                        #FIXME: will have to consider eth1 there and route from tun0 to eth1
-                        #no need to do this with eth0 since it's configured by dhcp
+                    elif session.master_dev_id == username:
+                        if self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
+                            #from eth0 to tun0
+                            commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
+                            commands += [commandActivateRouting]
+                            commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
+                            commands += [commandAddRule]
+                            gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
+                            commandAddRoute = '/sbin/ip "route del table 1 dev %% default via ' + gateway + '"'
+                            commands += [commandAddRoute]
+                            #FIXME: will have to consider eth1 there and route from tun0 to eth1
+                            #no need to do this with eth0 since it's configured by dhcp
+                        elif self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
+                            commandSetBridgeDown = '/sbin/ip "link set br0 down"'
+                            commands += [commandSetBridgeDown]
+                            commandRemoveTunnelIfaceFromBridge = '/sbin/brctl "delif br0 tap0"'
+                            commands += [commandRemoveTunnelIfaceFromBridge]
+                            commandRemoveUplinkIfaceFromBridge = '/sbin/brctl "delif br0 eth1"'
+                            commands += [commandRemoveUplinkIfaceFromBridge]
+                            commandUnloadModule = '/sbin/modprobe "-r bridge"'
+                            commands += [commandUnloadModule]
+                            commandLoadModule = '/sbin/modprobe "bridge"'
+                            commands += [commandLoadModule]
         return commands
 
     def destroy(self):
