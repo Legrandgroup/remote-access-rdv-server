@@ -85,6 +85,7 @@ class TundevVtun(object):
         """
         self.username = username
         self.vtun_server_tunnel = None
+        self._uplink_ip = None
         
         if self.username == 'rpi1100' or self.username == 'rpi1002': # For our (only) onsite RPI (1002 is for debug)
             self.tundev_role = 'onsite'
@@ -102,6 +103,7 @@ class TundevVtun(object):
         
         vtun_tunnel_name = 'tundev' + self.username
         vtun_shared_secret = '_' + self.username
+        self._uplink_ip = uplink_ip
         if self.tundev_role == 'onsite':    # For our (only) onsite RPI
             self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
@@ -622,6 +624,12 @@ class TundevManagerDBusService(dbus.service.Object):
                             os.system(rule.replace('<in>', str(session.master_dev_iface)).replace('<out>', str(session.onsite_dev_iface)))
                             #4 Add a rule to allow trafic from onsite interface to master interface
                             os.system(rule.replace('<in>', str(session.onsite_dev_iface)).replace('<out>', str(session.master_dev_iface)))
+                            #5 We add the NAT at RDVServer level
+                            logger.debug('Outcome iface to nat: ' + str(session.onsite_dev_iface))
+                            commandMasquerade = 'iptables -t nat -A POSTROUTING -o ' + str(session.onsite_dev_iface) + ' -j MASQUERADE'
+                            logger.debug('Executing #' + commandMasquerade + '#')
+                            os.system(commandMasquerade)
+                            logger.debug('Executed #' + commandMasquerade + '#')
                             
                             #Make the route
                             commands = []
@@ -668,7 +676,10 @@ class TundevManagerDBusService(dbus.service.Object):
                             os.system(rule.replace('<in>', str(master_dev_iface)).replace('<out>', str(onsite_dev_iface)))
                             #2 Remove iptables rule to allow trafic from onsite interface to master interface
                             os.system(rule.replace('<in>', str(onsite_dev_iface)).replace('<out>', str(master_dev_iface)))
-                            #3 If there is no more sessions, disable routing in kernel
+                            #3 Remove the nat on this interface
+                            commandMasquerade = '/sbin/iptables -t nat -D POSTROUTING -o ' + str(onsite_dev_iface) + ' -j MASQUERADE'
+                            os.system(commandMasquerade)
+                            #4 If there is no more sessions, disable routing in kernel
                             disableRouting = True
                             for session in self._session_pool:
                                 #print('Session ' + str(session) + ' status is ' + session.get_status())
