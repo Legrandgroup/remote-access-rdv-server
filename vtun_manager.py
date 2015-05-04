@@ -42,6 +42,8 @@ DBUS_SERVICE_INTERFACE = 'com.legrandelectric.RemoteAccess.TundevManager'	# The 
 
 setForwardPolicyToAcceptAtExit = False
 
+logger = None
+
 def cleanup_at_exit():
     """
     Called when this program is terminated, to release the lock
@@ -50,7 +52,8 @@ def cleanup_at_exit():
     global tundev_manager
     
     if tundev_manager:
-        print(progname + ': Shutting down', file=sys.stderr)   # For debug
+        if not logger is None:
+            logger.info('Cleaning up at exit')
         tundev_manager.destroy()
         tundev_manager = None
         
@@ -929,7 +932,9 @@ It will also connects onsite to master tunnels to create an end-to-end session",
     logger.addHandler(handler)
     logger.propagate = False
     
-    logger.debug(daemonname + ": Starting")
+    manager_pid = os.getpid()
+    
+    logger.info("Starting as PID " + str(manager_pid))
 
     # Prepare D-Bus environment
     system_bus = dbus.SystemBus(private=True)
