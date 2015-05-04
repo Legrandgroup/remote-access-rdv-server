@@ -126,8 +126,10 @@ Output the parameters of the vtun tunnel to connect to the RDV server
 if __name__ == '__main__':
     # Setup logging
     logging.basicConfig()
+
+    progname = progname.split('.')[0]
     
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(progname)
     
     logger.setLevel(logging.WARNING)    # In production mode
     
@@ -139,16 +141,16 @@ if __name__ == '__main__':
     # Find out the user account we will handle
     username = getpass.getuser()
     
-    logger.debug(progname + ': Starting on user account ' + username)
+    logger.debug('Starting onsitedev shell for user account ' + username)
 
     # lockfilename is passed to OnsiteDevShell's constructor. This file will be kept under a filesystem lock until this shell process is terminated
     lockfilename = '/var/lock/' + progname + '-' + str(os.getpid()) + '.lock'
     
     # Instanciate the shell
     onsite_dev_shell = OnsiteDevShell(username = username, logger = logger, lockfilename = lockfilename)
-    onsite_dev_shell.tunnel_mode = 'L3'	# FIXME: read from file (should be set by master dev shell)
+    onsite_dev_shell.tunnel_mode = 'L3'	# FIXME: Whatever we set here is not used (tunnel mode is set by master dev shell)
     
-    atexit.register(cleanup_at_exit)  # function cleanup_at_exit() will make sure the lockfilename above is deleted when this process exists
+    atexit.register(cleanup_at_exit)  # Function cleanup_at_exit() will make sure the lockfilename above is deleted when this process exists
     
     # Loop into the shell CLI parsing
     onsite_dev_shell.cmdloop()
