@@ -18,6 +18,7 @@ import dbus.mainloop.glib
 import argparse
 
 import logging
+import logging.handlers
 
 import fcntl    # For flock()
 
@@ -87,7 +88,7 @@ class TundevVtun(object):
         self.vtun_server_tunnel = None
         self._uplink_ip = None
         
-        if self.username == 'rpi1100' or self.username == 'rpi1002': # For our (only) onsite RPI (1002 is for debug)
+        if self.username == 'rpi1100' or self.username == 'rpi1104' or self.username == 'rpi1002': # For our onsite RPIs (1002 is for debug)
             self.tundev_role = 'onsite'
         elif self.username == 'rpi1101' or self.username == 'rpi1003': # For our (only) master RPI (1003 is for debug)
             self.tundev_role = 'master'
@@ -440,6 +441,7 @@ class TundevManagerDBusService(dbus.service.Object):
             new_binding.shellAliveWatchdog.set_unlock_callback(self.UnregisterTundevBinding, username)
             
             self._tundev_dict[username] = new_binding
+            logger.info('New binding created for username ' + str(username) + ' (role=' + str(new_binding.vtunService.tundev_role) + ', tunnel_mode=' + mode + ', uplink_ip=' + uplink_ip + ')')
         
         self._tundev_dict[username].vtunService.configure_service(mode, uplink_ip)
         
@@ -906,19 +908,28 @@ It will also connects onsite to master tunnels to create an end-to-end session",
     # Setup logging
     logging.basicConfig()
     
-    logger = logging.getLogger(__name__)
+    if args.debug:
+        daemonname = progname
+    else:
+        daemonname = progname.split('.')[0]
+    
+    logger = logging.getLogger(daemonname)
     
     if args.debug:
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)
     
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(levelname)s %(asctime)s %(name)s():%(lineno)d %(message)s"))
+    if args.debug:
+        handler = logging.StreamHandler()
+    else:
+        handler = logging.handlers.WatchedFileHandler('/var/log/' + daemonname + '.log')
+    
+    handler.setFormatter(logging.Formatter("%(levelname)s %(asctime)s %(name)s:%(lineno)d %(message)s"))
     logger.addHandler(handler)
     logger.propagate = False
     
-    logger.debug(progname + ": Starting")
+    logger.debug(daemonname + ": Starting")
 
     # Prepare D-Bus environment
     system_bus = dbus.SystemBus(private=True)
