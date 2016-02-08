@@ -22,6 +22,8 @@ import logging.handlers
 
 import fcntl    # For flock()
 
+import re
+
 import atexit
 
 #We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
@@ -91,12 +93,20 @@ class TundevVtun(object):
         self.vtun_server_tunnel = None
         self._uplink_ip = None
         
-        if self.username == 'rpi1100' or self.username == 'rpi1104' or self.username == 'rpi1002': # For our onsite RPIs (1002 is for debug)
-            self.tundev_role = 'onsite'
-        elif self.username == 'rpi1101' or self.username == 'rpi1003': # For our (only) master RPI (1003 is for debug)
-            self.tundev_role = 'master'
-        else:
-            raise Exception('UnknownTundevAccount:' + str(self.username))
+        with open('/etc/passwd') as f:
+            etc_passwd = f.readlines()
+            for line in etc_passwd:
+                (acct_username, acct_crypt_pwd, acct_uid, acct_gid, acct_gecos, acct_homedir, acct_shell) = line.split(':')
+                acct_shell = acct_shell.rstrip('\n')
+                if acct_username == self.username:
+                    if re.match(r'.*masterdev_shell.py$', acct_shell):
+                        self.tundev_role = 'master'
+                    elif re.match(r'.*onsitedev_shell.py$', acct_shell):
+                        self.tundev_role = 'onsite'
+                    else:   # Hardcoded accounts... this is not the way to go!
+                        raise Exception('UnknownTundevAccount:' + str(self.username))
+        
+        logger.debug('Role ' + self.tundev_role + ' automatically allocated to account ' + self.username + ' based on /etc/passwd shell')
 
     def configure_service(self, mode, uplink_ip):
         """ Configure a tunnel server to handle connectivity with this tunnelling device
@@ -108,12 +118,14 @@ class TundevVtun(object):
         vtun_tunnel_name = 'tundev' + self.username
         vtun_shared_secret = '_' + self.username
         self._uplink_ip = uplink_ip
-        if self.tundev_role == 'onsite':    # For our (only) onsite RPI
+        if self.tundev_role == 'onsite' and self.username == 'rpi1100':    # For our (only) onsite RPI
             self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
-        elif self.tundev_role == 'master':    # For our (only) master RPI
+        elif self.tundev_role == 'master' and self.username == 'rpi1101':    # For our (only) master RPI
             self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
+        else:
+            raise Exception('NoTunnelConfigFor:' + str(self.username))
 
     def start_vtun_server(self):
         """ Start a vtund server to handle connectivity with this tunnelling device
