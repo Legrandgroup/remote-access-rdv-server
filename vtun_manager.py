@@ -481,7 +481,7 @@ class TundevManagerDBusService(dbus.service.Object):
             except KeyError:
                 pass
 
-            if not tundev_binding is None:        
+            if not tundev_binding is None:
                 #Clean the registered sessions that include the unregistered device
                 with self._session_pool_mutex:
                     def isPartOfSession(session, username):
@@ -511,6 +511,7 @@ class TundevManagerDBusService(dbus.service.Object):
                     
                     #We set down the other session partner
                     if not to_remove is None:
+                        logger.info('Stopping established session between currently disconnecting ' + username + ' and remote ' + to_remove)
                         #logger.debug('to_remove is not None')
                         if self._tundev_dict[to_remove]:
                             #logger.debug('to_remove is in dict')
@@ -577,6 +578,7 @@ class TundevManagerDBusService(dbus.service.Object):
                 self._tundev_dict[onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.set_mode(mode)
                 #Allow the client to obtain its vtun configuration
                 self._tundev_dict[onsite_dev_id].vtunService.VtunAllowedSignal()
+                logger.info('Session starting between master ' + master_dev_id + ' and onsite ' + onsite_dev_id)
         
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sss', out_signature='')
     def TunnelInterfaceStatusUpdate(self, device_id, iface_name, status):
