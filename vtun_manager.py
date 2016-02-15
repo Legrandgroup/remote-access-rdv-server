@@ -783,9 +783,6 @@ class TundevManagerDBusService(dbus.service.Object):
                                 commands += [commandAddRoute]
                                 commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
                                 commands += [commandAddRule]
-                                #We activate routing
-                                commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
-                                commands += [commandActivateRouting]
                                 #Adding the nat rule for iptables
                                 network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
                                 commandMasquerade = '/sbin/iptables "-t nat -A POSTROUTING -o eth0 -j MASQUERADE"'
@@ -809,8 +806,6 @@ class TundevManagerDBusService(dbus.service.Object):
                                 commands += [commandAddRoute]
                                 commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
                                 commands += [commandAddRule]
-                                commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=1"'
-                                commands += [commandActivateRouting]
                                 #FIXME: will have to consider eth1 there and route from tun0 to eth1
                                 #no need to do this with eth0 since it's configured by dhcp
                             elif self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
@@ -842,9 +837,6 @@ class TundevManagerDBusService(dbus.service.Object):
                             network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
                             commandMasquerade = '/sbin/iptables "-t nat -D POSTROUTING -o eth0 -j MASQUERADE"'
                             commands += [commandMasquerade]
-                            #We deactivate routing
-                            commandDeactivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
-                            commands += [commandDeactivateRouting]
                             commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
                             commands += [commandAddRule]
                             gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
@@ -865,8 +857,6 @@ class TundevManagerDBusService(dbus.service.Object):
                     elif session.master_dev_id == username:
                         if self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
                             #from eth0 to tun0
-                            commandActivateRouting = '/sbin/sysctl "net.ipv4.ip_forward=0"'
-                            commands += [commandActivateRouting]
                             commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
                             commands += [commandAddRule]
                             gateway = str(self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
