@@ -787,15 +787,6 @@ class TundevManagerDBusService(dbus.service.Object):
                                 network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
                                 commandMasquerade = '/sbin/iptables "-t nat -A POSTROUTING -o eth0 -j MASQUERADE"'
                                 commands += [commandMasquerade]
-                            elif self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
-                                commandCreateBridge = '/sbin/brctl "addbr br0"'
-                                commands += [commandCreateBridge]
-                                commandAddUplinkIfaceToBridge = '/sbin/brctl "addif br0 eth0"'
-                                commands += [commandAddUplinkIfaceToBridge]
-                                commandAddTunnelIfaceToBridge = '/sbin/brctl "addif br0 tap0"'
-                                commands += [commandAddTunnelIfaceToBridge]
-                                commandSetBridgeUp = '/sbin/ip "link set br0 up"'
-                                commands += [commandSetBridgeUp]
                                 
                             
                         elif session.master_dev_id == username:
@@ -808,15 +799,6 @@ class TundevManagerDBusService(dbus.service.Object):
                                 commands += [commandAddRule]
                                 #FIXME: will have to consider eth1 there and route from tun0 to eth1
                                 #no need to do this with eth0 since it's configured by dhcp
-                            elif self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
-                                commandCreateBridge = '/sbin/brctl "addbr br0"'
-                                commands += [commandCreateBridge]
-                                commandAddUplinkIfaceToBridge = '/sbin/brctl "addif br0 eth1"'
-                                commands += [commandAddUplinkIfaceToBridge]
-                                commandAddTunnelIfaceToBridge = '/sbin/brctl "addif br0 tap0"'
-                                commands += [commandAddTunnelIfaceToBridge]
-                                commandSetBridgeUp = '/sbin/ip "link set br0 up"'
-                                commands += [commandSetBridgeUp]
                                 
         return commands
     
@@ -842,17 +824,6 @@ class TundevManagerDBusService(dbus.service.Object):
                             gateway = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_far_end_ip)
                             commandAddRoute = '/sbin/ip "route del table 1 dev %% default via ' + gateway + '"'
                             commands += [commandAddRoute]
-                        elif self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
-                            commandSetBridgeDown = '/sbin/ip "link set br0 down"'
-                            commands += [commandSetBridgeDown]
-                            commandRemoveTunnelIfaceFromBridge = '/sbin/brctl "delif br0 tap0"'
-                            commands += [commandRemoveTunnelIfaceFromBridge]
-                            commandRemoveUplinkIfaceFromBridge = '/sbin/brctl "delif br0 eth0"'
-                            commands += [commandRemoveUplinkIfaceFromBridge]
-                            commandUnloadModule = '/sbin/modprobe "-r bridge"'
-                            commands += [commandUnloadModule]
-                            commandLoadModule = '/sbin/modprobe "bridge"'
-                            commands += [commandLoadModule]
                         
                     elif session.master_dev_id == username:
                         if self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
@@ -864,17 +835,6 @@ class TundevManagerDBusService(dbus.service.Object):
                             commands += [commandAddRoute]
                             #FIXME: will have to consider eth1 there and route from tun0 to eth1
                             #no need to do this with eth0 since it's configured by dhcp
-                        elif self._tundev_dict[session.master_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L2':
-                            commandSetBridgeDown = '/sbin/ip "link set br0 down"'
-                            commands += [commandSetBridgeDown]
-                            commandRemoveTunnelIfaceFromBridge = '/sbin/brctl "delif br0 tap0"'
-                            commands += [commandRemoveTunnelIfaceFromBridge]
-                            commandRemoveUplinkIfaceFromBridge = '/sbin/brctl "delif br0 eth1"'
-                            commands += [commandRemoveUplinkIfaceFromBridge]
-                            commandUnloadModule = '/sbin/modprobe "-r bridge"'
-                            commands += [commandUnloadModule]
-                            commandLoadModule = '/sbin/modprobe "bridge"'
-                            commands += [commandLoadModule]
         return commands
 
     def destroy(self):
