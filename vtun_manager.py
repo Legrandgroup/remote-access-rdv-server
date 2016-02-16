@@ -784,7 +784,6 @@ class TundevManagerDBusService(dbus.service.Object):
                                 commandAddRule = '/sbin/ip "rule add unicast iif eth0 table 1"'
                                 commands += [commandAddRule]
                                 #Adding the nat rule for iptables
-                                network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
                                 commandMasquerade = '/sbin/iptables "-t nat -A POSTROUTING -o eth0 -j MASQUERADE"'
                                 commands += [commandMasquerade]
                                 
@@ -816,7 +815,6 @@ class TundevManagerDBusService(dbus.service.Object):
                     if session.onsite_dev_id == username:
                         if self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_mode.get_mode() == 'L3':
                             #Removing nat rule for iptables
-                            network = str(self._tundev_dict[session.onsite_dev_id].vtunService.vtun_server_tunnel.tunnel_ip_network)
                             commandMasquerade = '/sbin/iptables "-t nat -D POSTROUTING -o eth0 -j MASQUERADE"'
                             commands += [commandMasquerade]
                             commandAddRule = '/sbin/ip "rule del unicast iif eth0 table 1"'
