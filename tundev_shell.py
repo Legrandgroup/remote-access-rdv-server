@@ -218,30 +218,6 @@ Terminates this command-line session"""
         \return A multi-line config used for shell output
         """
         result = '\n'.join(self._get_vtun_shell_config())
-        up_commands = '\nup_additional_commands: '
-        up_commands += ';'.join(self._dbus_manager_iface.GetClientSideUpBlockCommands(self.username))
-        result += up_commands
-        down_commands = '\ndown_additional_commands: '
-        down_commands += ';'.join(self._dbus_manager_iface.GetClientSideDownBlockCommands(self.username))
-        result += down_commands
         return result;
     
-    def do_get_vtun_client_up_additional_commands(self, args):
-        """Usage: get_vtun_client_up_additional_commands
-        
-        Get the command for the up block of client side configuration file of vtund
-        
-        \return A list of commands to insert in the configuration file
-        """
-        print('\n'.join(self._dbus_manager_iface.GetClientSideUpBlockCommands(self.username)))
-        
-    def do_get_vtun_client_down_additional_commands(self, args):
-        """Usage: get_vtun_client_down_additional_commands
-        
-        Get the command for the down block of client side configuration file of vtund
-        
-        \return A list of commands to insert in the configuration file
-        """
-        print('\n'.join(self._dbus_manager_iface.GetClientSideDownBlockCommands(self.username)))
-
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True) # Use Glib's mainloop as the default loop for all subsequent code
