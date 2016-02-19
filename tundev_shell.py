@@ -44,6 +44,7 @@ class TunnellingDevShell(cmd.Cmd):
         self._vtun_server_tunnel = None # The vtun tunnel service
         self.lan_ip_address = None
         self.lan_ip_prefix = None
+        self.dns_list = None
      
         self._dbus_loop = gobject.MainLoop()    # Get a reference to the mainloop
         self._bus = dbus.SystemBus()    # Get a reference to the D-Bus system bus
@@ -158,6 +159,17 @@ Get the current tunnel mode"""
         else:
             print(self.tunnel_mode)
     
+    def do_set_tunnelling_dev_dns_server_list(self, args):
+        """Usage: set_tunnelling_dev_dns_server_list {dns1} [{dns2}...]
+
+Publish the LAN IP addresses of the tunnelling dev's DNS servers
+Argument address should contain a list of IP addresses separated by a spaces
+eg: "192.168.1.2 8.8.8.8\""""
+        try:
+            self.dns_list = [ipaddr.IPv4Address(dns_str) for dns_str in args.split()]
+        except ValueError:
+            print('Invalid DNS list:' + args, file=sys.stderr)
+    
     def do_set_tunnelling_dev_lan_ip_address(self, args):
         """Usage: set_tunnelling_dev_lan_ip_address {address}
 
@@ -170,7 +182,7 @@ eg: "192.168.1.2/24\""""
             self.lan_ip_prefix = ipv4._prefixlen
         except ValueError:
             print('Invalid IP network:' + args, file=sys.stderr)
-
+    
     def do_echo(self, command):
         """Usage: echo {string}
 
