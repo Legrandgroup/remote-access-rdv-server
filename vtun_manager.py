@@ -274,12 +274,6 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
          # You can have code here if you wish
         pass
     
-    #FIXME: To remove later as it is on a method to emit the unblocking signal for onsitedevshell
-    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='s')
-    def EmitWaitVtunSignal(self):
-        self.VtunAllowedSignal()
-        return "Signal emitted"
-    
     def destroy(self):
         self.remove_from_connection()   # Unregister this object
         TundevVtun.destroy(self) # Call TundevBinding's destroy
