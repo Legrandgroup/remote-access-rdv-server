@@ -274,6 +274,12 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
          # You can have code here if you wish
         pass
     
+    #FIXME: To remove later as it is on a method to emit the unblocking signal for onsitedevshell
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='s')
+    def EmitWaitVtunSignal(self):
+        self.VtunAllowedSignal()
+        return "Signal emitted"
+    
     def destroy(self):
         self.remove_from_connection()   # Unregister this object
         TundevVtun.destroy(self) # Call TundevBinding's destroy
@@ -438,7 +444,7 @@ class TundevManagerDBusService(dbus.service.Object):
         new_binding_object_path = DBUS_OBJECT_ROOT + '/' + username
         
         with self._tundev_dict_mutex:
-            logger.debug('Registering binding for username ' + str(username) + '(' + username + ', ' + mode + ', ' + uplink_ip + ')')
+            logger.debug('Registering binding for username ' + str(username))
             old_binding = self._tundev_dict.pop(username, None)
             if not old_binding is None:
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
@@ -496,9 +502,6 @@ class TundevManagerDBusService(dbus.service.Object):
                         if isPartOfSession(session, username):
                             to_remove = getOtherMember(session, username)
                             break
-                        
-                    
-                    
                     
                     #We only keep the session that don't have the unregistered username as a member (either master or onsite)
                     self._session_pool = [s for s in self._session_pool if not isPartOfSession(s, username)]
@@ -603,8 +606,6 @@ class TundevManagerDBusService(dbus.service.Object):
                     else:
                         session_tunnel_mode = 'invalid'
                     
-                    logger.debug('Session tunnel mode is ' + str(session_tunnel_mode))
-                    
                     if session.master_dev_id == device_id:
                         if status == 'up':
                             session.master_dev_iface = iface_name
@@ -615,7 +616,7 @@ class TundevManagerDBusService(dbus.service.Object):
                             session.onsite_dev_iface = iface_name
                         if status == 'down':
                             session.onsite_dev_iface = None
-                    logger.debug('DBusCall: TunnelInterfaceStatusUpdate -> ' + iface_name + ' to communicate with ' + device_id + ' is now ' + status)
+                    logger.debug('Handling D-Bus call "TunnelInterfaceStatusUpdate": ' + session_tunnel_mode + ' tunnel interface ' + iface_name + ' associated with ' + device_id + ' is now ' + status)
                     #print('Previous status of session ' + str(session) + ': ' + previous_status)
                     #print('Current status of session ' + str(session) + ': ' + session.get_status())
                     if previous_status == 'in-progress' and session.get_status() == 'up':
@@ -638,11 +639,11 @@ class TundevManagerDBusService(dbus.service.Object):
                             #4 Add a rule to allow trafic from onsite interface to master interface
                             os.system(rule.replace('<in>', str(session.onsite_dev_iface)).replace('<out>', str(session.master_dev_iface)))
                             #5 We add the NAT at RDVServer level
-                            logger.debug('Outcome iface to nat: ' + str(session.onsite_dev_iface))
+                            logger.debug('Will NAT to onsite interface ' + str(session.onsite_dev_iface))
                             commandMasquerade = 'iptables -t nat -A POSTROUTING -o ' + str(session.onsite_dev_iface) + ' -j MASQUERADE'
-                            logger.debug('Executing #' + commandMasquerade + '#')
+                            #~ logger.debug('Executing #' + commandMasquerade + '#')
                             os.system(commandMasquerade)
-                            logger.debug('Executed #' + commandMasquerade + '#')
+                            #~ logger.debug('Executed #' + commandMasquerade + '#')
                             
                             #Make the route
                             commands = []
@@ -732,7 +733,7 @@ class TundevManagerDBusService(dbus.service.Object):
                             os.system(commandDeleteBridge)
                         
                         #When we lost one of the tunnels, we should stop the other tunnel too.
-                        logger.debug(device_id + ' goes down, stopp vtun for other device')
+                        logger.debug(device_id + ' goes offline, stopping vtun tunnel for peer device in session')
                         if session.onsite_dev_id == device_id:
                             #The onsite fall, so we end the master as well
                             #print(device_id + 'is onsite, stopping master ' + session.master_dev_id)
