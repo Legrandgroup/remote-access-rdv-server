@@ -105,6 +105,7 @@ Output the readiness status of the RDV server, possible return values are "ready
             obj = self._bus.get_object(DBUS_SERVICE_INTERFACE, DBUS_OBJECT_ROOT + '/' + str(self.username))
             obj.connect_to_signal("VtunAllowedSignal", VtunAllowedHandler,dbus_interface=DBUS_SERVICE_INTERFACE)
         except dbus.DBusException:
+            import traceback
             traceback.print_exc()
         
         event.wait(timeout)
