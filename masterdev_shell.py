@@ -93,7 +93,7 @@ Output the parameters of the vtun tunnel to connect to the RDV server
         """
         for dev in self._dbus_manager_iface.GetOnlineOnsiteDevs():
             print(dev)
-            
+
     def do_connect_to_onsite_dev(self, id):
         """Usage: connect_to_onsite_dev_id {id}
         \param id The id of the onsite device to connect to.
@@ -101,7 +101,16 @@ Output the parameters of the vtun tunnel to connect to the RDV server
         self._assert_registered_to_manager()
         
         self._dbus_manager_iface.ConnectMasterDevToOnsiteDev(self.username, id)
-        pass
+
+    def do_show_remote_onsite_ip_config(self, args):
+        """Usage: show_remote_onsite_ip_config
+        Displays the LAN IP address of the remote onsite we are currently connected to (or nothing if no session is currently active)
+        """
+        onsite_lan_ip = self._dbus_manager_iface.GetOnsiteDevLanConfig(self.username)
+        if onsite_lan_ip:
+            print(onsite_lan_ip)
+        else:
+            print('No remote onsite IP configuration retrieved. Are you connected to an onsite?', file=sys.stderr)
 
 if __name__ == '__main__':
     # Setup logging
