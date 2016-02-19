@@ -454,7 +454,7 @@ class TundevManagerDBusService(dbus.service.Object):
         
         self._tundev_dict[username].vtunService.configure_service(mode, uplink_ip)
         
-        return new_binding_object_path  # Reply the full D-Bus object path of the newly generated biding to the caller
+        return new_binding_object_path  # Reply the full D-Bus object path of the newly generated binding to the caller
         
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='')
     def UnregisterTundevBinding(self, username):
@@ -538,6 +538,22 @@ class TundevManagerDBusService(dbus.service.Object):
                 if dev.vtunService.tundev_role == 'onsite':
                     online_onsite_devs_list += [dev.vtunService.username]
         return online_onsite_devs_list
+
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='s', out_signature='s')
+    def GetOnsiteDevLanConfig(self, master_id):
+        """ Returns the IP configuration of the LAN interface of an onsite device, to its master
+        
+        \param master_id The master of the session for which we want the IP config of the onsite side
+        \return The IP address of the onsite in CIDR notation
+        """
+        with self._tundev_dict_mutex:
+            with self._session_pool_mutex:
+                for session in self._session_pool:
+                    if session.master_dev_id == master_id:	# Check if we are on the good session (involving the requested master)
+                        return str(self._tundev_dict[session.onsite_dev_id].lan_ip)
+        
+        logger.warning('D-Bus request GetOnsiteDevLanConfig was performed on a master that is not taking part in any active session: ' + master_id)
+        return ''
         
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ss', out_signature='')
     def ConnectMasterDevToOnsiteDev(self, master_dev_id, onsite_dev_id):
