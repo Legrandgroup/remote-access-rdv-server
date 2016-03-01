@@ -343,13 +343,11 @@ class TundevShellBinding(object):
     
     Objects of this class are used for data storage, they only have public attributes (there are no method, apart from the cleanup performed in destroy())
     """
-    def __init__(self, lan_ip):
+    def __init__(self):
         """ Constructor for the class
         """
         self.vtunService = None
         self.shellAliveWatchdog = None
-        
-        self.lan_ip = ipaddr.IPv4Network(str(lan_ip))
         
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
@@ -451,7 +449,7 @@ class TundevManagerDBusService(dbus.service.Object):
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
                 old_binding.destroy()
             
-            new_binding = TundevShellBinding(lan_ip)
+            new_binding = TundevShellBinding()
             new_binding.vtunService = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
             new_binding.shellAliveWatchdog = TunDevShellWatchdog(shell_alive_lock_fn)
             new_binding.shellAliveWatchdog.set_unlock_callback(self.UnregisterTundevBinding, username)
