@@ -343,11 +343,22 @@ class TundevShellBinding(object):
     
     Objects of this class are used for data storage, they only have public attributes (there are no method, apart from the cleanup performed in destroy())
     """
-    def __init__(self):
+    def __init__(self,
+                 vtun_service = None,
+                 shell_alive_watchdog = None,
+                 shell_alive_watchdog_unlock_callback = None,
+                 shell_alive_watchdog_unlock_callback_arg = None):
         """ Constructor for the class
+        \param vtun_service The TundevVtunDBusService object to store in this container
+        \param shell_alive_watchdog The TunDevShellWatchdog object to store in this container
+        \param shell_alive_watchdog_unlock_callback An optional callback to set \p shell_alive_watchdog on using set_unlock_callback()
+        \param shell_alive_watchdog_unlock_callback_arg An optional callback argument to set \p shell_alive_watchdog on using set_unlock_callback()
         """
-        self.vtunService = None
-        self.shellAliveWatchdog = None
+        self.vtunService = vtun_service
+        self.shellAliveWatchdog = shell_alive_watchdog
+        if self.shellAliveWatchdog is not None:
+            if shell_alive_watchdog_unlock_callback is not None:
+                self.shellAliveWatchdog.set_unlock_callback(shell_alive_watchdog_unlock_callback, shell_alive_watchdog_unlock_callback_arg)
         
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
@@ -449,12 +460,11 @@ class TundevManagerDBusService(dbus.service.Object):
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
                 old_binding.destroy()
             
-            new_binding = TundevShellBinding()
-            new_binding.vtunService = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
-            new_binding.shellAliveWatchdog = TunDevShellWatchdog(shell_alive_lock_fn)
-            new_binding.shellAliveWatchdog.set_unlock_callback(self.UnregisterTundevBinding, username)
-            
-            self._tundev_dict[username] = new_binding
+            self._tundev_dict[username] = TundevShellBinding(vtun_service = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
+                                                             shell_alive_watchdog = TunDevShellWatchdog(shell_alive_lock_fn),
+                                                             shell_alive_watchdog_unlock_callback = self.UnregisterTundevBinding,
+                                                             shell_alive_watchdog_unlock_callback_arg = username
+                                                            )
             logger.info('New binding created for username ' + str(username) + ' (role=' + str(new_binding.vtunService.tundev_role) + ', tunnel_mode=' + mode + ', lan_ip=' + lan_ip + ', lan_dns="' + lan_dns + '")')
         
         self._tundev_dict[username].vtunService.configure_service(mode, lan_ip)
