@@ -91,7 +91,8 @@ class TundevVtun(object):
         """
         self.username = username
         self.vtun_server_tunnel = None
-        self._uplink_ip = None
+        self._lan_ip = None
+        self._lan_dns = None
         
         with open('/etc/passwd') as f:
             etc_passwd = f.readlines()
@@ -108,16 +109,18 @@ class TundevVtun(object):
         
         logger.debug('Role ' + self.tundev_role + ' automatically allocated to account ' + self.username + ' based on /etc/passwd shell')
 
-    def configure_service(self, mode, uplink_ip):
+    def configure_service(self, mode, lan_ip, lan_dns):
         """ Configure a tunnel server to handle connectivity with this tunnelling device
         
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
-        \param uplink_ip The IP on the uplink interface of the tundev
+        \param lan_ip The IP address of the tundev on the remote LAN
+        \param lan_dns The list of DNS servers of the tundev on the remote LAN
         """
         
         vtun_tunnel_name = 'tundev' + self.username
         vtun_shared_secret = '_' + self.username
-        self._uplink_ip = uplink_ip
+        self._lan_ip = lan_ip
+        self._lan_dns = lan_dns
         if self.tundev_role == 'onsite' and self.username == 'rpi1100':    # For our (only) onsite RPI
             self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
@@ -232,13 +235,14 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     
     # D-Bus-related methods
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ss', out_signature='')
-    def ConfigureService(self, mode, uplink_ip):
+    def ConfigureService(self, mode, lan_ip, lan_dns):
         """ Configure a tunnel server to handle connectivity with this tunnelling device
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
-    \param uplink_ip The IP on the uplink interface of the tundev
+        \param lan_ip The IP address of the tundev on the remote LAN
+        \param lan_dns The list of DNS servers of the tundev on the remote LAN
         """
-        logger.debug('/' + self.username + ' Got ConfigureService(' + str(mode) +','+ str(uplink_ip) + ') D-Bus request')
-        self.configure_service(mode, uplink_ip)
+        logger.debug('/' + self.username + ' Got ConfigureService(' + str(mode) +','+ str(lan_ip) + ', "' + str(lan_dns) + '") D-Bus request')
+        self.configure_service(mode, lan_ip, lan_dns)
         
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='', out_signature='')
     def StartTunnelServer(self):
@@ -337,13 +341,15 @@ class TunDevShellWatchdog(object):
 class TundevShellBinding(object):
     """ Class used to pack together a TundevBindingDBusService object and the corresponding filesystem lock watchdog
     
-    Objects of this class only have attributes (there are no method): 
+    Objects of this class are used for data storage, they only have public attributes (there are no method, apart from the cleanup performed in destroy())
     """
-    def __init__(self, uplink_ip):
+    def __init__(self, lan_ip):
+        """ Constructor for the class
+        """
         self.vtunService = None
         self.shellAliveWatchdog = None
         
-        self.lan_ip = ipaddr.IPv4Network(str(uplink_ip))
+        self.lan_ip = ipaddr.IPv4Network(str(lan_ip))
         
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
@@ -424,13 +430,14 @@ class TundevManagerDBusService(dbus.service.Object):
         self._session_pool = []    # Initialise with an empty Session array
         self._session_pool_mutex = threading.Lock() # This mutex protects writes and reads to the _session_pool attribute
 
-    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ssss', out_signature='s')
-    def RegisterTundevBinding(self, username, mode, uplink_ip, shell_alive_lock_fn):
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sssss', out_signature='s')
+    def RegisterTundevBinding(self, username, mode, lan_ip, lan_dns, shell_alive_lock_fn):
         """ Register a new tunnelling device to the TundevManagerDBusService
         
         \param username Username of the account used by the tunnelling device
         \param mode A string containing the tunnel mode (L2, L3 etc...)
-    \param uplink_ip The IP on the uplink interface of the tundev
+        \param lan_ip The IP address of the tundev on the remote LAN
+        \param lan_dns The list of DNS servers of the tundev on the remote LAN
         \param shell_alive_lock_fn Lock filename to check that the tundev shell process that depends on this binding is still alive. This is a filename on which the shell has grabbed an exclusive OS-level lock (flock()). The tundev_shell will keep this filesystem lock as long as it requires the vtun tunnel to be kept up.
         \return We will return the D-Bus object path for the newly instanciated binding
         """
@@ -444,15 +451,15 @@ class TundevManagerDBusService(dbus.service.Object):
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
                 old_binding.destroy()
             
-            new_binding = TundevShellBinding(uplink_ip)
+            new_binding = TundevShellBinding(lan_ip)
             new_binding.vtunService = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path)
             new_binding.shellAliveWatchdog = TunDevShellWatchdog(shell_alive_lock_fn)
             new_binding.shellAliveWatchdog.set_unlock_callback(self.UnregisterTundevBinding, username)
             
             self._tundev_dict[username] = new_binding
-            logger.info('New binding created for username ' + str(username) + ' (role=' + str(new_binding.vtunService.tundev_role) + ', tunnel_mode=' + mode + ', uplink_ip=' + uplink_ip + ')')
+            logger.info('New binding created for username ' + str(username) + ' (role=' + str(new_binding.vtunService.tundev_role) + ', tunnel_mode=' + mode + ', lan_ip=' + lan_ip + ', lan_dns="' + lan_dns + '")')
         
-        self._tundev_dict[username].vtunService.configure_service(mode, uplink_ip)
+        self._tundev_dict[username].vtunService.configure_service(mode, lan_ip)
         
         return new_binding_object_path  # Reply the full D-Bus object path of the newly generated binding to the caller
         

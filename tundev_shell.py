@@ -109,7 +109,10 @@ class TunnellingDevShell(cmd.Cmd):
         """
         if self.lan_ip_address is None or  self.lan_ip_prefix is None:
             raise Exception('LanIpShouldBeProvidedBeforeRegistrationToManager')
-        self._tundevbinding_dbus_path = self._dbus_manager_iface.RegisterTundevBinding(self.username, self.tunnel_mode, str(self.lan_ip_address) + '/' + str(self.lan_ip_prefix), self._shell_lockfilename)
+        dns_list = ''
+        if self.dns_list is not None:
+            dns_list = ' '.join(str(dns) for dns in self.dns_list)  # Convert from Python list to space-separated value string
+        self._tundevbinding_dbus_path = self._dbus_manager_iface.RegisterTundevBinding(self.username, self.tunnel_mode, str(self.lan_ip_address) + '/' + str(self.lan_ip_prefix), dns_list, self._shell_lockfilename)
         # Now create a proxy and interface to be abled to communicate with this binding
         self.logger.debug('Registered to binding with D-Bus object path: "' + str(self._tundevbinding_dbus_path) + '"')
         self._dbus_binding_proxy = self._bus.get_object(DBUS_SERVICE_INTERFACE, self._tundevbinding_dbus_path)
