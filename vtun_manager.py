@@ -121,15 +121,29 @@ class TundevVtun(object):
         vtun_shared_secret = '_' + self.username
         self._lan_ip = lan_ip
         self._lan_dns = lan_dns
-        if self.tundev_role == 'onsite' and self.username == 'rpi1100':    # For our (only) onsite RPI
+        if self.tundev_role == 'onsite' and self.username == 'rpi1100':    # For our registered onsite RPIs
             self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
-        elif self.tundev_role == 'master' and self.username == 'rpi1101':    # For our (only) master RPI
+        elif self.tundev_role == 'master' and self.username == 'rpi1101':    # For our registered master RPIs
             self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
             self.vtun_server_tunnel.restrict_server_to_iface('lo')
         else:
             raise Exception('NoTunnelConfigFor:' + str(self.username))
-
+    
+    def get_lan_ip(self):
+        """ Get the IP address (on the remote LAN) associated with the tunnelling device served by this vtun connection
+        
+        \return The tunnelling device's IP address on the remote LAN
+        """
+        return self._lan_ip
+    
+    def get_lan_dns(self):
+        """ Get the DNS list (on the remote LAN) associated with the tunnelling device served by this vtun connection
+        
+        \return The tunnelling device's DNS list on the remote LAN
+        """
+        return self._lan_dns
+    
     def start_vtun_server(self):
         """ Start a vtund server to handle connectivity with this tunnelling device
         """
@@ -344,32 +358,42 @@ class TundevShellBinding(object):
     Objects of this class are used for data storage, they only have public attributes (there are no method, apart from the cleanup performed in destroy())
     """
     def __init__(self,
-                 lan_ip = None,
-                 lan_dns = None,
                  vtun_service = None,
                  shell_alive_watchdog = None,
                  shell_alive_watchdog_unlock_callback = None,
                  shell_alive_watchdog_unlock_callback_arg = None):
         """ Constructor for the class
-        \param lan_ip The IP address of the tundev on the remote LAN
-        \param lan_dns The list of DNS servers of the tundev on the remote LAN
         \param vtun_service The TundevVtunDBusService object to store in this container
         \param shell_alive_watchdog The TunDevShellWatchdog object to store in this container
         \param shell_alive_watchdog_unlock_callback An optional callback to set \p shell_alive_watchdog on using set_unlock_callback()
         \param shell_alive_watchdog_unlock_callback_arg An optional callback argument to set \p shell_alive_watchdog on using set_unlock_callback()
         """
-        try:
-            self.lan_ip = ipaddr.IPv4Network(str(lan_ip))
-            logger.warning('Wrong LAN IP address provided during construction of TundevShellBinding object: ' + str(lan_ip))
-        except:
-            self.lan_ip = None
-        self.lan_dns = str(lan_ip)
         self.vtunService = vtun_service
         self.shellAliveWatchdog = shell_alive_watchdog
         if self.shellAliveWatchdog is not None:
             if shell_alive_watchdog_unlock_callback is not None:
                 self.shellAliveWatchdog.set_unlock_callback(shell_alive_watchdog_unlock_callback, shell_alive_watchdog_unlock_callback_arg)
+    
+    def get_lan_ip(self):
+        """ Get the IP address (on the remote LAN) associated with the tunnelling device represented by this shell binding object
         
+        \return The tunnelling device's IP address on the remote LAN
+        """
+        try:
+            return self.vtunService.get_lan_ip()
+        except:
+            return None
+    
+    def get_lan_dns(self):
+        """ Get the DNS list (on the remote LAN) associated with the tunnelling device represented by this shell binding object
+        
+        \return The tunnelling device's DNS list on the remote LAN
+        """
+        try:
+            return self.vtunService.get_lan_dns()
+        except:
+            return None
+    
     def destroy(self):
         """ This is a destructor for this object... it makes sure we perform all the cleanup before this object is garbage collected
         
@@ -470,16 +494,14 @@ class TundevManagerDBusService(dbus.service.Object):
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
                 old_binding.destroy()
             
-            self._tundev_dict[username] = TundevShellBinding(lan_ip = lan_ip,
-                                                             lan_dns = lan_dns,
-                                                             vtun_service = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
+            self._tundev_dict[username] = TundevShellBinding(vtun_service = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
                                                              shell_alive_watchdog = TunDevShellWatchdog(shell_alive_lock_fn),
                                                              shell_alive_watchdog_unlock_callback = self.UnregisterTundevBinding,
                                                              shell_alive_watchdog_unlock_callback_arg = username
                                                             )
             logger.info('New binding created for username ' + str(username) + ' (role=' + str(self._tundev_dict[username].vtunService.tundev_role) + ', tunnel_mode=' + mode + ', lan_ip=' + lan_ip + ', lan_dns="' + lan_dns + '")')
-        
-        self._tundev_dict[username].vtunService.configure_service(mode=mode, lan_ip=lan_ip, lan_dns=lan_dns)
+            
+            self._tundev_dict[username].vtunService.configure_service(mode=mode, lan_ip=lan_ip, lan_dns=lan_dns)
         
         return new_binding_object_path  # Reply the full D-Bus object path of the newly generated binding to the caller
         
@@ -577,7 +599,7 @@ class TundevManagerDBusService(dbus.service.Object):
             with self._session_pool_mutex:
                 for session in self._session_pool:
                     if session.master_dev_id == master_id:	# Check if we are on the good session (involving the requested master)
-                        return str(self._tundev_dict[session.onsite_dev_id].lan_ip)
+                        return str(self._tundev_dict[session.onsite_dev_id].get_lan_ip())
         
         logger.warning('D-Bus request GetOnsiteDevLanConfig was performed on a master that is not taking part in any active session: ' + master_id)
         return ''
