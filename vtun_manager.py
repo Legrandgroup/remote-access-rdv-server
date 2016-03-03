@@ -75,6 +75,27 @@ def cleanup_at_exit():
 #         #print(progname + ': Ignoring signal ' + str(signum), file=sys.stderr)
 #         pass
 
+def tcp_port_is_free(port, bind_address = '', *socket_args, **socket_kwargs):
+    """ Check if a given TCP port is not already in use
+    
+    \param port The TCP port to test
+    \param bind_address The address to bind to (1st element of tuple provided as arg for bind() call)
+    \param socket_args Positional args to provide to socket() call
+    \param socket_kwargs Keyword args to provide to socket() call
+    \return True if the TCP port is free, False otherwise
+    """
+    import socket
+    import errno
+    import contextlib
+    try:
+        with contextlib.closing(socket.socket(*socket_args, **socket_kwargs)) as tcp_socket:
+            tcp_socket.bind((bind_address, port))
+            port = tcp_socket.getsockname()[1]
+            return True
+    except socket.error as error:
+        if not error.errno == errno.EADDRINUSE:
+            raise
+    return False
 
 class TundevVtun(object):
     """ Class representing a vtun serving a tunnelling device connected to the RDV server
@@ -146,6 +167,9 @@ class TundevVtun(object):
             raise Exception('BadTunnelIpRange:' + tunnel_ip_network_str)
         tunnel_near_end_ip = tunnel_ip_network.network + 1  # Use the first address in range for the RDV server (near end)
         tunnel_far_end_ip = tunnel_ip_network.network + 2  # Use the second address in range for the tunnelling device (far end)
+        
+        if not tcp_port_is_free(vtun_server_tcp_port):
+            logger.warning('TCP port ' + str(vtun_server_tcp_port) + ' on which the vtun server will listen seems already in use')
         
         logger.debug('Configuring new RDV server-side vtun tunnel for tundev ' + self.username + ' in mode ' + mode + ' using addressing ' + str(tunnel_ip_network) + ' for tunnel extremities')
         self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC,
