@@ -234,7 +234,7 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
         logger.debug('Registered binding with D-Bus object PATH: ' + str(dbus_object_path))
     
     # D-Bus-related methods
-    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ss', out_signature='')
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sss', out_signature='')
     def ConfigureService(self, mode, lan_ip, lan_dns):
         """ Configure a tunnel server to handle connectivity with this tunnelling device
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
@@ -344,16 +344,26 @@ class TundevShellBinding(object):
     Objects of this class are used for data storage, they only have public attributes (there are no method, apart from the cleanup performed in destroy())
     """
     def __init__(self,
+                 lan_ip = None,
+                 lan_dns = None,
                  vtun_service = None,
                  shell_alive_watchdog = None,
                  shell_alive_watchdog_unlock_callback = None,
                  shell_alive_watchdog_unlock_callback_arg = None):
         """ Constructor for the class
+        \param lan_ip The IP address of the tundev on the remote LAN
+        \param lan_dns The list of DNS servers of the tundev on the remote LAN
         \param vtun_service The TundevVtunDBusService object to store in this container
         \param shell_alive_watchdog The TunDevShellWatchdog object to store in this container
         \param shell_alive_watchdog_unlock_callback An optional callback to set \p shell_alive_watchdog on using set_unlock_callback()
         \param shell_alive_watchdog_unlock_callback_arg An optional callback argument to set \p shell_alive_watchdog on using set_unlock_callback()
         """
+        try:
+            self.lan_ip = ipaddr.IPv4Network(str(lan_ip))
+            logger.warning('Wrong LAN IP address provided during construction of TundevShellBinding object: ' + str(lan_ip))
+        except:
+            self.lan_ip = None
+        self.lan_dns = str(lan_ip)
         self.vtunService = vtun_service
         self.shellAliveWatchdog = shell_alive_watchdog
         if self.shellAliveWatchdog is not None:
@@ -460,14 +470,16 @@ class TundevManagerDBusService(dbus.service.Object):
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
                 old_binding.destroy()
             
-            self._tundev_dict[username] = TundevShellBinding(vtun_service = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
+            self._tundev_dict[username] = TundevShellBinding(lan_ip = lan_ip,
+                                                             lan_dns = lan_dns,
+                                                             vtun_service = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
                                                              shell_alive_watchdog = TunDevShellWatchdog(shell_alive_lock_fn),
                                                              shell_alive_watchdog_unlock_callback = self.UnregisterTundevBinding,
                                                              shell_alive_watchdog_unlock_callback_arg = username
                                                             )
-            logger.info('New binding created for username ' + str(username) + ' (role=' + str(new_binding.vtunService.tundev_role) + ', tunnel_mode=' + mode + ', lan_ip=' + lan_ip + ', lan_dns="' + lan_dns + '")')
+            logger.info('New binding created for username ' + str(username) + ' (role=' + str(self._tundev_dict[username].vtunService.tundev_role) + ', tunnel_mode=' + mode + ', lan_ip=' + lan_ip + ', lan_dns="' + lan_dns + '")')
         
-        self._tundev_dict[username].vtunService.configure_service(mode, lan_ip)
+        self._tundev_dict[username].vtunService.configure_service(mode=mode, lan_ip=lan_ip, lan_dns=lan_dns)
         
         return new_binding_object_path  # Reply the full D-Bus object path of the newly generated binding to the caller
         
