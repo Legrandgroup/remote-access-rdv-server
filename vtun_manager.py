@@ -109,26 +109,54 @@ class TundevVtun(object):
         
         logger.debug('Role ' + self.tundev_role + ' automatically allocated to account ' + self.username + ' based on /etc/passwd shell')
 
-    def configure_service(self, mode, lan_ip, lan_dns):
+    def configure_service(self, mode, lan_ip_str, lan_dns_str):
         """ Configure a tunnel server to handle connectivity with this tunnelling device
         
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
-        \param lan_ip The IP address of the tundev on the remote LAN
-        \param lan_dns The list of DNS servers of the tundev on the remote LAN
+        \param lan_ip_str The IP address of the tundev on the remote LAN
+        \param lan_dns_str The list of DNS servers of the tundev on the remote LAN as a space-separated string
         """
         
         vtun_tunnel_name = 'tundev' + self.username
         vtun_shared_secret = '_' + self.username
-        self._lan_ip = lan_ip
-        self._lan_dns = lan_dns
-        if self.tundev_role == 'onsite' and self.username == 'rpi1100':    # For our registered onsite RPIs
-            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.100.0/30', tunnel_near_end_ip = '192.168.100.1', tunnel_far_end_ip = '192.168.100.2', vtun_server_tcp_port = 5000, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
-            self.vtun_server_tunnel.restrict_server_to_iface('lo')
-        elif self.tundev_role == 'master' and self.username == 'rpi1101':    # For our registered master RPIs
-            self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC, mode = mode, tunnel_ip_network = '192.168.101.0/30', tunnel_near_end_ip = '192.168.101.1', tunnel_far_end_ip = '192.168.101.2', vtun_server_tcp_port = 5001, vtun_tunnel_name = vtun_tunnel_name, vtun_shared_secret = vtun_shared_secret)
-            self.vtun_server_tunnel.restrict_server_to_iface('lo')
+        try:
+            self._lan_ip = ipaddr.IPv4Network(lan_ip_str)
+        except:
+            logger.warning('Invalid LAN IP: ' + str(lan_ip_str))
+            self._lan_ip = None
+        
+        self._lan_dns = lan_dns_str
+        
+        if self.tundev_role == 'onsite' and self.username == 'rpi1100':    # For our registered onsite RPI
+            tunnel_ip_network_str = '192.168.100.0/30'
+            vtun_server_tcp_port = 5000
+        elif self.tundev_role == 'master' and self.username == 'rpi1101':    # For our registered master RPI
+            tunnel_ip_network_str = '192.168.101.0/30'
+            vtun_server_tcp_port = 5001
         else:
             raise Exception('NoTunnelConfigFor:' + str(self.username))
+        
+        try:
+            tunnel_ip_network = ipaddr.IPv4Network(tunnel_ip_network_str)
+        except:
+            logger.error('Failed to setup tunnel addressing from network "' + tunnel_ip_network_str + '"')
+            raise Exception('BadTunnelIpRange:' + tunnel_ip_network_str)
+        if tunnel_ip_network.max_prefixlen - tunnel_ip_network.prefixlen<2: # We need at least a 2 bits-wide host part to address 2 machines (2^2=4, less network and broadcast addresses that are reserved)
+            logger.error('Unusable netmask for tunnel addressing: /' + str(tunnel_ip_network.prefixlen))
+            raise Exception('BadTunnelIpRange:' + tunnel_ip_network_str)
+        tunnel_near_end_ip = tunnel_ip_network.network + 1  # Use the first address in range for the RDV server (near end)
+        tunnel_far_end_ip = tunnel_ip_network.network + 2  # Use the second address in range for the tunnelling device (far end)
+        
+        logger.debug('Configuring new RDV server-side vtun tunnel for tundev ' + self.username + ' in mode ' + mode + ' using addressing ' + str(tunnel_ip_network) + ' for tunnel extremities')
+        self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC,
+                                                                      mode = mode,
+                                                                      tunnel_ip_network = str(tunnel_ip_network),
+                                                                      tunnel_near_end_ip = str(tunnel_near_end_ip),
+                                                                      tunnel_far_end_ip = str(tunnel_far_end_ip),
+                                                                      vtun_server_tcp_port = vtun_server_tcp_port,
+                                                                      vtun_tunnel_name = vtun_tunnel_name,
+                                                                      vtun_shared_secret = vtun_shared_secret)
+        self.vtun_server_tunnel.restrict_server_to_iface('lo')
     
     def get_lan_ip(self):
         """ Get the IP address (on the remote LAN) associated with the tunnelling device served by this vtun connection
@@ -161,10 +189,11 @@ class TundevVtun(object):
             iface_name += self.username
             self.vtun_server_tunnel.set_interface_name(iface_name)
             
-            #We set up the up & down block commands (basically dbus method call to notify the interface status change
+            #We set up the up & down block commands (basically D-Bus method call to notify the interface status change)
             #dbus-send --system --print-reply --dest=com.legrandelectric.RemoteAccess.TundevManager /com/legrandelectric/RemoteAccess/TundevManager com.legrandelectric.RemoteAccess.TundevManager.TunnelInterfaceStatusUpdate string:'rpi1101' string:'tun_to_rpi1101' string:'up'
-            #Command should be provided with full path
+            #Command should be provided with full path (vtund requires this in its config file)
             #Also, parameters are between doubles quotes "
+            #It may appear strange to use an external command to perform a D-Bus callback on ourselves (as a process), but the D-Bus call will be performed externally from vtund, so we can't invoke any method directly from python!
             def generate_dbus_call_for_status(status):
                 command =  '/usr/bin/dbus-send '
                 command += '"--system --print-reply'
@@ -179,9 +208,9 @@ class TundevVtun(object):
             
             #For Up Block
             up_command = generate_dbus_call_for_status('up')
-            self.vtun_server_tunnel.add_up_command(up_command)
+            self.vtun_server_tunnel.add_up_command(up_command)  # Ask the vtund daemon to run a D-Bus call on TunnelInterfaceStatusUpdate(self.username, iface_name, 'up') when tunnel interface is up
             #For Down Block
-            down_command = generate_dbus_call_for_status('down')
+            down_command = generate_dbus_call_for_status('down')  # Ask the vtund daemon to run a D-Bus call on TunnelInterfaceStatusUpdate(self.username, iface_name, 'down') when tunnel interface is down
             self.vtun_server_tunnel.add_down_command(down_command)
             self.vtun_server_tunnel.start()
         else:
@@ -501,7 +530,7 @@ class TundevManagerDBusService(dbus.service.Object):
                                                             )
             logger.info('New binding created for username ' + str(username) + ' (role=' + str(self._tundev_dict[username].vtunService.tundev_role) + ', tunnel_mode=' + mode + ', lan_ip=' + lan_ip + ', lan_dns="' + lan_dns + '")')
             
-            self._tundev_dict[username].vtunService.configure_service(mode=mode, lan_ip=lan_ip, lan_dns=lan_dns)
+            self._tundev_dict[username].vtunService.configure_service(mode=mode, lan_ip_str=lan_ip, lan_dns_str=lan_dns)
         
         return new_binding_object_path  # Reply the full D-Bus object path of the newly generated binding to the caller
         
