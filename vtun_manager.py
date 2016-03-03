@@ -46,6 +46,16 @@ setForwardPolicyToAcceptAtExit = False
 
 logger = None
 
+def check_vtund_running():
+    import psutil
+    
+    vtund_pids = []
+    for p in psutil.process_iter():
+        if re.match(r'^vtund', p.name):
+            vtund_pids += [p.pid]
+    if vtund_pids:
+        logger.warning('There seem to be already running instances on vtund server with PIDs: ' + str(vtund_pids))
+
 def cleanup_at_exit():
     """
     Called when this program is terminated, to release the lock
@@ -929,7 +939,10 @@ It will also connects onsite to master tunnels to create an end-to-end session",
     manager_pid = os.getpid()
     
     logger.info("Starting as PID " + str(manager_pid))
-
+    
+    # Verify that there is no remaining vtund process from a previous instance
+    check_vtund_running()
+    
     # Prepare D-Bus environment
     system_bus = dbus.SystemBus(private=True)
     
