@@ -80,7 +80,7 @@ Returns the role of the user account running the current shell, which can be 'ma
 Publish the type of uplink used by the tunnelling dev
 Argument type is a string
 eg: "lan\""""
-        if args == 'lan' or args == '3g':
+        if args == 'lan' or args == 'wlan' or args == '3g':
             self.uplink_type = args
         else:
             print('Unsupported uplink type: ' + args, file=sys.stderr)
