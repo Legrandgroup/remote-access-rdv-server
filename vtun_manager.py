@@ -396,7 +396,7 @@ class TunDevShellWatchdog(object):
         fcntl.flock(shell_lockfile_fd, fcntl.LOCK_EX)
         # Lionel: FIXME: the watchdog is not triggered immediately... this is probably because of the glib's mainloop
         # We only get the notification for the watchdog at the next D-Bus request...
-        logger.warning('Tundev shell exitted (lock file "' + self.lock_fn + '" was released')
+        logger.warning('Tundev shell exitted (lock file "' + self.lock_fn + '" was released)')
         # When we get here, it means the lock was released, that is the tundev shell process exitted
         if self._unlock_callback is None:
             logger.debug('Watchdog triggered but will be ignored because no unlock callback was setup')
