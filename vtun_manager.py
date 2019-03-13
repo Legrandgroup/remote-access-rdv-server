@@ -165,6 +165,7 @@ class TundevVtun(object):
             tunnel_ip_network_str = '192.168.101.0/30'
             vtun_server_tcp_port = 5001
         else:
+            logger.error('No known tunnel configuration for username=\'' + self.username + '\' with role ' + self.tundev_role)
             raise Exception('NoTunnelConfigFor:' + str(self.username))
         
         try:
@@ -537,13 +538,14 @@ class TundevManagerDBusService(dbus.service.Object):
         self._session_pool_mutex = threading.Lock() # This mutex protects writes and reads to the _session_pool attribute
 
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sssss', out_signature='s')
-    def RegisterTundevBinding(self, username, mode, lan_ip, lan_dns, shell_alive_lock_fn):
+    def RegisterTundevBinding(self, username, mode, lan_ip, lan_dns, hostname, shell_alive_lock_fn):
         """ Register a new tunnelling device to the TundevManagerDBusService
         
         \param username Username of the account used by the tunnelling device
         \param mode A string containing the tunnel mode (L2, L3 etc...)
         \param lan_ip The IP address of the tundev on the remote LAN
         \param lan_dns The list of DNS servers of the tundev on the remote LAN
+        \param hostname The hostname announced by the tundev
         \param shell_alive_lock_fn Lock filename to check that the tundev shell process that depends on this binding is still alive. This is a filename on which the shell has grabbed an exclusive OS-level lock (flock()). The tundev_shell will keep this filesystem lock as long as it requires the vtun tunnel to be kept up.
         \return We will return the D-Bus object path for the newly instanciated binding
         """
@@ -557,12 +559,18 @@ class TundevManagerDBusService(dbus.service.Object):
                 logger.warning('Duplicate username ' + str(username) + '. First deleting previous binding')
                 old_binding.destroy()
             
+            if hostname == '':
+                hostname = None
+            
             self._tundev_dict[username] = TundevShellBinding(vtun_service = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
                                                              shell_alive_watchdog = TunDevShellWatchdog(shell_alive_lock_fn),
                                                              shell_alive_watchdog_unlock_callback = self.UnregisterTundevBinding,
                                                              shell_alive_watchdog_unlock_callback_arg = username
                                                             )
-            logger.info('New binding created for username ' + str(username) + ' (role=' + str(self._tundev_dict[username].vtunService.tundev_role) + ', tunnel_mode=' + mode + ', lan_ip=' + lan_ip + ', lan_dns="' + lan_dns + '")')
+            hostname_descr=''
+            if hostname is not None:	# Add details about the hostname if known
+                hostname_descr = ', hostname=' + hostname
+            logger.info('New binding created for username ' + str(username) + ' (role=' + str(self._tundev_dict[username].vtunService.tundev_role) + ', tunnel_mode=' + mode + ', lan_ip=' + lan_ip + ', lan_dns="' + lan_dns + '"' + hostname_descr + ')')
             
             self._tundev_dict[username].vtunService.configure_service(mode=mode, lan_ip_str=lan_ip, lan_dns_str=lan_dns)
         

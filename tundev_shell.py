@@ -45,7 +45,8 @@ class TunnellingDevShell(cmd.Cmd):
         self.lan_ip_address = None
         self.lan_ip_prefix = None
         self.dns_list = None
-     
+        self.hostname = None
+        
         self._dbus_loop = gobject.MainLoop()    # Get a reference to the mainloop
         self._bus = dbus.SystemBus()    # Get a reference to the D-Bus system bus
         dbus_manager_object = DBUS_OBJECT_ROOT
@@ -112,7 +113,10 @@ class TunnellingDevShell(cmd.Cmd):
         dns_list = ''
         if self.dns_list is not None:
             dns_list = ' '.join(str(dns) for dns in self.dns_list)  # Convert from Python list to space-separated value string
-        self._tundevbinding_dbus_path = self._dbus_manager_iface.RegisterTundevBinding(self.username, self.tunnel_mode, str(self.lan_ip_address) + '/' + str(self.lan_ip_prefix), dns_list, self._shell_lockfilename)
+        hostname = self.hostname
+        if hostname is None:
+            hostname=''
+        self._tundevbinding_dbus_path = self._dbus_manager_iface.RegisterTundevBinding(self.username, self.tunnel_mode, str(self.lan_ip_address) + '/' + str(self.lan_ip_prefix), dns_list, hostname, self._shell_lockfilename)
         # Now create a proxy and interface to be abled to communicate with this binding
         self.logger.debug('Registered to binding with D-Bus object path: "' + str(self._tundevbinding_dbus_path) + '"')
         self._dbus_binding_proxy = self._bus.get_object(DBUS_SERVICE_INTERFACE, self._tundevbinding_dbus_path)
@@ -171,7 +175,7 @@ eg: "192.168.1.2 8.8.8.8\""""
         try:
             self.dns_list = [ipaddr.IPv4Address(dns_str) for dns_str in args.split()]
         except ValueError:
-            print('Invalid DNS list:' + args, file=sys.stderr)
+            print('Invalid DNS list: ' + args, file=sys.stderr)
     
     def do_set_tunnelling_dev_lan_ip_address(self, args):
         """Usage: set_tunnelling_dev_lan_ip_address {address}
@@ -184,7 +188,24 @@ eg: "192.168.1.2/24\""""
             self.lan_ip_address = ipv4.ip
             self.lan_ip_prefix = ipv4._prefixlen
         except ValueError:
-            print('Invalid IP network:' + args, file=sys.stderr)
+            print('Invalid IP network: ' + args, file=sys.stderr)
+    
+    def do_set_tunnelling_dev_hostname(self, args):
+        """Usage: set_tunnelling_dev_hostname '{hostname}'
+
+Publish the hostname of the tunnelling dev
+Argument is the hostname string, the string should be surrounded by single quotes, and within the hostname, single quotes and backslashes should be escaped with a backslash
+eg: 'lionel\'s onsite'"""
+        hostname = args.strip()	# Remove leading and trailing whitespaces
+        if hostname.len<2:
+            self.hostname = hostname
+        elif hostname[0]!="'" or hostname[-1]!="'":
+            self.hostname = hostname
+        else:
+            try:
+                self.hostname = hostname[1:-1].decode('string_escape')
+            except:
+                print('Invalid hostname: ' + args, file=sys.stderr)
     
     def do_echo(self, command):
         """Usage: echo {string}
