@@ -197,7 +197,7 @@ Publish the hostname of the tunnelling dev
 Argument is the hostname string, the string should be surrounded by single quotes, and within the hostname, single quotes and backslashes should be escaped with a backslash
 eg: 'lionel\'s onsite'"""
         hostname = args.strip()	# Remove leading and trailing whitespaces
-        if hostname.len<2:
+        if len(hostname)<2:
             self.hostname = hostname
         elif hostname[0]!="'" or hostname[-1]!="'":
             self.hostname = hostname
