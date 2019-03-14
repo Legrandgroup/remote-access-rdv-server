@@ -537,7 +537,7 @@ class TundevManagerDBusService(dbus.service.Object):
         self._session_pool = []    # Initialise with an empty Session array
         self._session_pool_mutex = threading.Lock() # This mutex protects writes and reads to the _session_pool attribute
 
-    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sssss', out_signature='s')
+    @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ssssss', out_signature='s')
     def RegisterTundevBinding(self, username, mode, lan_ip, lan_dns, hostname, shell_alive_lock_fn):
         """ Register a new tunnelling device to the TundevManagerDBusService
         
