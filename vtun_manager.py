@@ -47,6 +47,9 @@ setForwardPolicyToAcceptAtExit = False
 logger = None
 
 def check_vtund_running():
+    """
+    Check if there is any "ghost" vtund process still running
+    """
     import psutil
     
     vtund_pids = []
@@ -298,9 +301,8 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     def __init__(self, conn, username, dbus_object_path, **kwargs):
         """ Instanciate a new TundevVtunDBusService handling the user account \p username
         \param conn A D-Bus connection object
-        \param dbus_loop A main loop to use to process D-Bus request/signals
-        \param dbus_object_path The path of the object to handle on D-Bus
         \param username Inherited from TundevBinding.__init__()
+        \param dbus_object_path The path of the object to handle on D-Bus
         """
         # Note: **kwargs is here to make this contructor more generic (it will however force args to be named, but this is anyway good practice) and is a step towards efficient mutliple-inheritance with Python new-style-classes
         if username is None:
@@ -353,10 +355,11 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     @dbus.service.signal(dbus_interface = DBUS_SERVICE_INTERFACE)
     def VtunAllowedSignal(self):
          # The signal is emitted when this method exits
-         # You can have code here if you wish
         pass
     
     def destroy(self):
+        """ Destroy this object, associated tunnels and connections
+        """
         self.remove_from_connection()   # Unregister this object
         TundevVtun.destroy(self) # Call TundevBinding's destroy
 
@@ -368,6 +371,9 @@ class TunDevShellWatchdog(object):
     """
     
     def __init__(self, shell_alive_lock_fn):
+        """ Constructor
+        \param shell_alive_lock_fn A file descriptor that we monitor (using flock()) to be notified when the shell exists or is destroyed
+        """
         self.lock_fn = shell_alive_lock_fn
         self._lock_fn_watchdog_thread = threading.Thread(target = self._check_lock_fn)
         self._lock_fn_watchdog_thread.setDaemon(True) # D-Bus loop should be forced to terminate when main program exits
@@ -378,7 +384,7 @@ class TunDevShellWatchdog(object):
         """ Set the function that will be called when the watchdog triggers
         
         \param unlock_callback The function to call
-        \param username The username parameter for the  callback
+        \param arg The argument to provide to the callback function
         """
         if hasattr(unlock_callback, '__call__'):
             self._unlock_callback = unlock_callback
@@ -480,13 +486,23 @@ class TundevShellBinding(object):
             pass
 
 class Session:
+    """ Class used to represent a remote access session between a master dev and an onsite dev
+    """
     def __init__(self, master_dev_id, onsite_dev_id):
+        """ Constructor
+        \param master_dev_id The identifier of the master device of this session
+        \param onsite_dev_id The identifier of the onsite device of this session
+        """
         self.master_dev_id = master_dev_id
         self.onsite_dev_id = onsite_dev_id
         self.master_dev_iface = None
         self.onsite_dev_iface = None
         
     def __eq__(self, other):
+        """ Allows equality operator on objects of this class
+        \param other The instance to compare to
+        \return True if both objects are equal
+        """
         if (self.master_dev_id == other.master_dev_id 
             and self.onsite_dev_id == other.onsite_dev_id
             and self.master_dev_iface == other.master_dev_iface 
@@ -496,6 +512,9 @@ class Session:
             return False
     
     def __str__(self):
+        """ Allows representation of an instance of this class as a string (for debug or output purposes)
+        \return A string representation of ourselves
+        """
         if not self.onsite_dev_iface is None and not self.master_dev_iface is None:
             return '(' + str(self.master_dev_id) + ', ' + str(self.onsite_dev_id) + '): [M]' + self.master_dev_iface + ' <-> [O]' + self.onsite_dev_iface 
         else:
