@@ -132,7 +132,7 @@ class TundevDatabase(object):
         \return The allocated TCP port number
         """
         for tcp_port in range(self.tcp_port_min, self.tcp_port_max):
-            if not tcp_port in self.tcp_port_pool.values()
+            if not tcp_port in self.tcp_port_pool.values():
                 self.tcp_port_pool[tundev_id] = tcp_port    # Store the new TCP port allocated for this device
                 return tcp_port
         raise BufferError('TCP port pool is full')
@@ -143,7 +143,7 @@ class TundevDatabase(object):
         
         \note This method will raise a KeyError exception if no config has been allocated for this tundev_id
         """
-        if not tundev_id in self.tcp_port_pool
+        if not tundev_id in self.tcp_port_pool:
             raise KeyError(tundev_id)
         del self.tcp_port_pool[tundev_id]
     
@@ -370,6 +370,10 @@ class TundevVtun(object):
         try:
             logger.warning('Deleting vtun serving username ' + self.username)
             self.vtun_server_tunnel.stop()
+        except:
+            pass
+        try:
+            self.tundev_db.free_config(self.username)
         except:
             pass
 
