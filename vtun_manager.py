@@ -110,6 +110,83 @@ def tcp_port_is_free(port, bind_address = '', *socket_args, **socket_kwargs):
             raise
     return False
 
+class TundevDatabase(object):
+    """ Class storing known tunnelling devices, their roles and their respective configuration
+    """
+    ROLE_MASTER = 'master' # Tunnelling device has a master role
+    ROLE_ONSITE = 'onsite' # Tunnelling device has a master role
+    
+    def __init__(self, tcp_port_min = 5000, tcp_port_max = 5255):
+        """ Constructor
+        \param tcp_port_min The starting TCP port of the range to use
+        \param tcp_port_min The last TCP port of the range to use (excluded from range)
+        """
+        self.tcp_port_min = tcp_port_min
+        self.tcp_port_max = tcp_port_max
+        self.tcp_port_pool = {} # A dict of TCP port already allocated (key is the tundev_id, value is the TCP port)
+        self.db = {}    # Create an empty database
+    
+    def _allocate_tcp_port(self, tundev_id):
+        """ Allocate a free TCP for a tunnelling device
+        \param tundev_id The tunnelling device unique identifier
+        \return The allocated TCP port number
+        """
+        for tcp_port in range(tcp_port_min, tcp_port_max):
+            if not tcp_port in self.tcp_port_pool.values()
+                self.tcp_port_pool[tundev_id] = tcp_port    # Store the new TCP port allocated for this device
+                return tcp_port
+        raise BufferError('TCP port pool is full')
+    
+    def _free_tcp_port(self, tundev_id):
+        """ Free the TCP port allocated for a tunnelling device
+        \param tundev_id The tunnelling device unique identifier
+        
+        \note This method will raise a KeyError exception if no config has been allocated for this tundev_id
+        """
+        if not tundev_id in self.tcp_port_pool
+            raise KeyError(tundev_id)
+        del self.tcp_port_pool[tundev_id]
+    
+    def allocate_config(self, tundev_id):
+        """ Allocate the configuration for a specific tunnelling device identifier
+        \return A tuple (ip_net, tcp_port) where ip_net is an IP network range using the prefix notation, and TCP port is the TCP port of the vtun service. Both of these values will then be uniquely allocated for this tundev_id
+        
+        \note This method will raise a KeyError exception if this tundev_id is unknown
+        """
+        tunnel_ip_network_str = None
+        vtun_server_tcp_port = None
+        vtun_server_tcp_port = self._allocate_free_tcp_port(tundev_id)
+        if tundev_id == 'rpi1100':    # For our registered onsite RPI
+            tunnel_ip_network_str = '192.168.100.0/30'
+        elif tundev_id == 'rpi1101':    # For our registered master RPI
+            tunnel_ip_network_str = '192.168.101.0/30'
+        if tunnel_ip_network_str is None or vtun_server_tcp_port is None:
+            raise KeyError(tundev_id)
+        return (tunnel_ip_network_str, vtun_server_tcp_port)
+    
+    def free_config(self, tundev_id):
+        """ Free the configuration for a specific tunnelling device identifier, so that its allocated resources can be used again by a new tunnelling device
+        \param tundev_id The tunnelling device identifier for which to free the resources
+        
+        \note This method will raise a KeyError exception if no config has been allocated for this tundev_id
+        """
+        self._free_tcp_port(tundev_id)
+    
+    def get_role(self, tundev_id):
+        """ Get the known role associated with specific tunnelling device identifier
+        \return Either ROLE_MASTER or ROLE_ONSITE
+        
+        \note This method will raise a KeyError exception if this tundev_id is unknown
+        """
+        role = None
+        if tundev_id == 'rpi1100':    # For our registered onsite RPI
+            role = TundevDatabase.ROLE_ONSITE
+        elif tundev_id == 'rpi1101':    # For our registered master RPI
+            role = TundevDatabase.ROLE_MASTER
+        if role is None:
+            raise KeyError(tundev_id)
+        return role
+    
 class TundevVtun(object):
     """ Class representing a vtun serving a tunnelling device connected to the RDV server
     Among other, it will make sure the life cycle of the vtun tunnels are handled in a centralised way
@@ -118,11 +195,13 @@ class TundevVtun(object):
     
     VTUND_EXEC = '/usr/local/sbin/vtund'
     
-    def __init__(self, username):
+    def __init__(self, tundev_db, username):
         """ Create a new object to represent a tunnelling device from the vtun manager perspective
         
+        \param tundev_db The TundevDatabase instance storing the config of each tunnelling device
         \param username The username (account) of the tundev_shell that is object will be bound to
         """
+        self.tundev_db = tundev_db
         self.username = username
         self.vtun_server_tunnel = None
         self._lan_ip = None
@@ -161,15 +240,15 @@ class TundevVtun(object):
         
         self._lan_dns = lan_dns_str
         
-        if self.tundev_role == 'onsite' and self.username == 'rpi1100':    # For our registered onsite RPI
-            tunnel_ip_network_str = '192.168.100.0/30'
-            vtun_server_tcp_port = 5000
-        elif self.tundev_role == 'master' and self.username == 'rpi1101':    # For our registered master RPI
-            tunnel_ip_network_str = '192.168.101.0/30'
-            vtun_server_tcp_port = 5001
-        else:
-            logger.error('No known tunnel configuration for username=\'' + self.username + '\' with role ' + self.tundev_role)
-            raise Exception('NoTunnelConfigFor:' + str(self.username))
+        if self.tundev_db.get_role(self.username) != self.tundev_role:  # Database is not expecting this username to handle this role (onsite/master)
+            logger.error('Role mismatch in database for username=\'' + self.username + '\'... database does not expect our current role ' + self.tundev_role)
+            raise Exception('TundevRoleMismatch:' + str(self.username))
+        
+        try:
+            (tunnel_ip_network_str, vtun_server_tcp_port) = self.tundev_db.allocate_config(self.username)
+        except KeyError:
+            logger.error('No configuration for username=\'' + self.username)
+            raise Exception('NoConfigFor:' + str(self.username))
         
         try:
             tunnel_ip_network = ipaddr.IPv4Network(tunnel_ip_network_str)
@@ -298,8 +377,9 @@ class TundevVtun(object):
 class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     """ Class allowing to send/receive D-Bus requests to a TundevVtun object
     """
-    def __init__(self, conn, username, dbus_object_path, **kwargs):
+    def __init__(self, tundev_db, conn, username, dbus_object_path, **kwargs):
         """ Instanciate a new TundevVtunDBusService handling the user account \p username
+        \param tundev_db The TundevDatabase instance storing the config of each tunnelling device
         \param conn A D-Bus connection object
         \param username Inherited from TundevBinding.__init__()
         \param dbus_object_path The path of the object to handle on D-Bus
@@ -309,7 +389,7 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
             raise Exception('MissingUsername')
         
         dbus.service.Object.__init__(self, conn = conn, object_path = dbus_object_path)
-        TundevVtun.__init__(self, username = username)
+        TundevVtun.__init__(self, tundev_db = tundev_db, username = username)
         
         logger.debug('Registered binding with D-Bus object PATH: ' + str(dbus_object_path))
     
@@ -550,11 +630,13 @@ class TundevManagerDBusService(dbus.service.Object):
         self._conn = conn   # Store the connection object... we will pass it to bindings we generate
         dbus.service.Object.__init__(self, conn = self._conn, object_path = dbus_object_path)
         
-        self._tundev_dict = {}    # Initialise with an empty TunDevBinding dict
+        self._tundev_dict = {}    # Initialise an empty TunDevBinding dict
         self._tundev_dict_mutex = threading.Lock() # This mutex protects writes and reads to the _tundev_dict attribute
         
-        self._session_pool = []    # Initialise with an empty Session array
+        self._session_pool = []    # Initialise an empty Session array
         self._session_pool_mutex = threading.Lock() # This mutex protects writes and reads to the _session_pool attribute
+        
+        self._tundev_db = TundevDatabase()   # Initialise global TundevDatabase instance used to store tunnelling device configurations
 
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ssssss', out_signature='s')
     def RegisterTundevBinding(self, username, mode, lan_ip, lan_dns, hostname, shell_alive_lock_fn):
@@ -581,7 +663,7 @@ class TundevManagerDBusService(dbus.service.Object):
             if hostname == '':
                 hostname = None
             
-            self._tundev_dict[username] = TundevShellBinding(vtun_service = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
+            self._tundev_dict[username] = TundevShellBinding(vtun_service = TundevVtunDBusService(tundev_db = self._tundev_db, conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
                                                              shell_alive_watchdog = TunDevShellWatchdog(shell_alive_lock_fn),
                                                              shell_alive_watchdog_unlock_callback = self.UnregisterTundevBinding,
                                                              shell_alive_watchdog_unlock_callback_arg = username
