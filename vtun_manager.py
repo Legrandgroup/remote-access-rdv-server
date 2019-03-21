@@ -114,27 +114,29 @@ class TundevDatabase(object):
     """ Class storing known tunnelling devices, their roles and their respective configuration
     """
     ROLE_MASTER = 'master' # Tunnelling device has a master role
-    ROLE_ONSITE = 'onsite' # Tunnelling device has a master role
+    ROLE_ONSITE = 'onsite' # Tunnelling device has an onsite role
     
     def __init__(self, tcp_port_min = 5000, tcp_port_max = 5255):
         """ Constructor
         \param tcp_port_min The starting TCP port of the range to use
         \param tcp_port_min The last TCP port of the range to use (excluded from range)
         """
-        self.tcp_port_min = tcp_port_min
-        self.tcp_port_max = tcp_port_max
-        self.tcp_port_pool = {} # A dict of TCP port already allocated (key is the tundev_id, value is the TCP port)
-        self.db = {}    # Create an empty database
+        self._tcp_port_min = tcp_port_min
+        self._tcp_port_max = tcp_port_max
+        self._tcp_port_pool = {} # A dict of TCP port already allocated (key is the tundev_id, value is the TCP port)
+        self._tcp_port_pool_mutex = threading.Lock() # This mutex protects writes and reads to the tcp_port_pool attribute
+        self._db = {}    # Create an empty database
     
     def _allocate_tcp_port(self, tundev_id):
         """ Allocate a free TCP for a tunnelling device
         \param tundev_id The tunnelling device unique identifier
         \return The allocated TCP port number
         """
-        for tcp_port in range(self.tcp_port_min, self.tcp_port_max):
-            if not tcp_port in self.tcp_port_pool.values():
-                self.tcp_port_pool[tundev_id] = tcp_port    # Store the new TCP port allocated for this device
-                return tcp_port
+        with self._tcp_port_pool_mutex:
+            for tcp_port in range(self._tcp_port_min, self._tcp_port_max):
+                if not tcp_port in self._tcp_port_pool.values():
+                    self._tcp_port_pool[tundev_id] = tcp_port    # Store the new TCP port allocated for this device
+                    return tcp_port
         raise BufferError('TCP port pool is full')
     
     def _free_tcp_port(self, tundev_id):
@@ -143,9 +145,10 @@ class TundevDatabase(object):
         
         \note This method will raise a KeyError exception if no config has been allocated for this tundev_id
         """
-        if not tundev_id in self.tcp_port_pool:
-            raise KeyError(tundev_id)
-        del self.tcp_port_pool[tundev_id]
+        with self._tcp_port_pool_mutex:
+            if not tundev_id in self._tcp_port_pool:
+                raise KeyError(tundev_id)
+            del self._tcp_port_pool[tundev_id]
     
     def allocate_config(self, tundev_id):
         """ Allocate the configuration for a specific tunnelling device identifier
