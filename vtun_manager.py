@@ -131,7 +131,7 @@ class TundevDatabase(object):
         \param tundev_id The tunnelling device unique identifier
         \return The allocated TCP port number
         """
-        for tcp_port in range(tcp_port_min, tcp_port_max):
+        for tcp_port in range(self.tcp_port_min, self.tcp_port_max):
             if not tcp_port in self.tcp_port_pool.values()
                 self.tcp_port_pool[tundev_id] = tcp_port    # Store the new TCP port allocated for this device
                 return tcp_port
@@ -154,8 +154,7 @@ class TundevDatabase(object):
         \note This method will raise a KeyError exception if this tundev_id is unknown
         """
         tunnel_ip_network_str = None
-        vtun_server_tcp_port = None
-        vtun_server_tcp_port = self._allocate_free_tcp_port(tundev_id)
+        vtun_server_tcp_port = self._allocate_tcp_port(tundev_id)
         if tundev_id == 'rpi1100':    # For our registered onsite RPI
             tunnel_ip_network_str = '192.168.100.0/30'
         elif tundev_id == 'rpi1101':    # For our registered master RPI
