@@ -118,7 +118,7 @@ class TundevDatabase(object):
         self._tcp_port_min = tcp_port_min
         self._tcp_port_max = tcp_port_max
         self._tcp_port_pool = {} # A dict of TCP port already allocated (key is the tundev_id, value is the TCP port)
-        self._tcp_port_pool_mutex = threading.Lock() # This mutex protects writes and reads to the tcp_port_pool attribute
+        self._tcp_port_pool_mutex = threading.Lock() # This mutex protects writes and reads to the _tcp_port_pool attribute
         self._db = {}    # Create an empty database
     
     def _allocate_tcp_port(self, tundev_id):
