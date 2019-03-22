@@ -26,7 +26,7 @@ import re
 
 import atexit
 
-#We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
+#We depend on the PythonVtunLib from https://github.com/Legrandgroup/pythonvtunlib
 from pythonvtunlib import server_vtun_tunnel
 from pythonvtunlib import client_vtun_tunnel
 from pythonvtunlib import tunnel_mode 
