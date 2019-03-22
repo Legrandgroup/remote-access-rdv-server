@@ -32,7 +32,9 @@ from pythonvtunlib import client_vtun_tunnel
 from pythonvtunlib import tunnel_mode 
 
 import subprocess
-import ipaddr
+import ipaddr   # To perform IP network/address calculation
+
+import psutil   # To scan open TCP ports
 
 progname = os.path.basename(sys.argv[0])
 
@@ -88,27 +90,19 @@ def cleanup_at_exit():
 #         #print(progname + ': Ignoring signal ' + str(signum), file=sys.stderr)
 #         pass
 
-def tcp_port_is_free(port, bind_address = '', *socket_args, **socket_kwargs):
+def tcp_port_is_free(port):
     """ Check if a given TCP port is not already in use
     
     \param port The TCP port to test
-    \param bind_address The address to bind to (1st element of tuple provided as arg for bind() call)
-    \param socket_args Positional args to provide to socket() call
-    \param socket_kwargs Keyword args to provide to socket() call
     \return True if the TCP port is free, False otherwise
+    
+    \warning Be careful, this is subject to TOCTOU issues
     """
-    import socket
-    import errno
-    import contextlib
-    try:
-        with contextlib.closing(socket.socket(*socket_args, **socket_kwargs)) as tcp_socket:
-            tcp_socket.bind((bind_address, port))
-            port = tcp_socket.getsockname()[1]
-            return True
-    except socket.error as error:
-        if not error.errno == errno.EADDRINUSE:
-            raise
-    return False
+    for conn in psutil.net_connections('tcp4'):
+        tcp_port_inuse= conn.laddr[1]
+        if tcp_port_inuse == port:
+            return False
+    return True
 
 class TundevDatabase(object):
     """ Class storing known tunnelling devices, their roles and their respective configuration
