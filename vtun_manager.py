@@ -399,6 +399,11 @@ class TundevVtun(object):
             self.tundev_db.free_config(self.username)
         except:
             pass
+    
+    def __del__(self):
+        """ Destructor
+        """
+        self.destroy()
 
 class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     """ Class allowing to send/receive D-Bus requests to a TundevVtun object
