@@ -212,22 +212,7 @@ class TundevDatabase(object):
         
         if failure_exception is not None:
             raise failure_exception
-    
-    def get_role(self, tundev_id):
-        """ Get the known role associated with specific tunnelling device identifier
-        \return Either ROLE_MASTER or ROLE_ONSITE
-        
-        \note This method will raise a KeyError exception if this tundev_id is unknown
-        """
-        role = None
-        if tundev_id == 'rpi1100':    # For our registered onsite RPI
-            role = TundevDatabase.ROLE_ONSITE
-        elif tundev_id == 'rpi1101':    # For our registered master RPI
-            role = TundevDatabase.ROLE_MASTER
-        if role is None:
-            raise KeyError(tundev_id)
-        return role
-    
+
 class TundevVtun(object):
     """ Class representing a vtun serving a tunnelling device connected to the RDV server
     Among other, it will make sure the life cycle of the vtun tunnels are handled in a centralised way
@@ -280,10 +265,6 @@ class TundevVtun(object):
             self._lan_ip = None
         
         self._lan_dns = lan_dns_str
-        
-        if self.tundev_db.get_role(self.username) != self.tundev_role:  # Database is not expecting this username to handle this role (onsite/master)
-            logger.error('Role mismatch in database for username=\'' + self.username + '\'... database does not expect our current role ' + self.tundev_role)
-            raise Exception('TundevRoleMismatch:' + str(self.username))
         
         try:
             (tunnel_ip_network_str, vtun_server_tcp_port) = self.tundev_db.allocate_config(self.username)
