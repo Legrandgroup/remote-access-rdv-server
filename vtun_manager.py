@@ -427,7 +427,7 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     # D-Bus-related methods
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sss', out_signature='')
     def ConfigureService(self, mode, lan_ip, lan_dns):
-        """ Configure a tunnel server to handle connectivity with this tunnelling device
+        """ (Configure a tunnel server to handle connectivity with this tunnelling device
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
         \param lan_ip The IP address of the tundev on the remote LAN
         \param lan_dns The list of DNS servers of the tundev on the remote LAN
@@ -1039,17 +1039,12 @@ dbus.mainloop.glib.DBusGMainLoop(set_as_default=True) # Use Glib's mainloop as t
 if __name__ == '__main__':
     atexit.register(cleanup_at_exit)
     
-    #Check the default policy for FORWARD table, if it is to ACCEPT, then we put it to DROP
-    out = subprocess.check_output('iptables -L FORWARD | grep -Ei \'.*(policy\s.*)\' | grep -oEi \'(policy [A-Z]+)\'', shell=True)
-    if out.replace('\n', '').split(' ')[1] == 'ACCEPT':
-        os.system('iptables -P FORWARD DROP  > /dev/null 2>&1')
-        setForwardPolicyToAcceptAtExit = True
-        
     # Parse arguments
     parser = argparse.ArgumentParser(description="This program launches a vtun manager daemon. \
 It will handle tunnel creation/destruction on behalf of tundev_shell processes, via D-Bus methods and signal. \
 It will also connects onsite to master tunnels to create an end-to-end session", prog=progname)
     parser.add_argument('-d', '--debug', action='store_true', help='display debug info', default=False)
+    parser.add_argument('-R', '--allow-non-root', dest='allow_non_root', action='store_true', help='allow execution as non-root user', default=False)
     args = parser.parse_args()
 
     # Setup logging
@@ -1076,6 +1071,19 @@ It will also connects onsite to master tunnels to create an end-to-end session",
     logger.addHandler(handler)
     logger.propagate = False
     
+    if os.geteuid() != 0:
+        if args.allow_non_root:
+            logger.warning('This script has not been run with root priviledges. Subsequent setup will probably fail.')
+        else:
+            logger.error('This script must be run with root priviledges. Aborting. Use option --allow-non-root to override this check.')
+            exit(1)
+
+    #Check the default policy for FORWARD table, if it is to ACCEPT, then we put it to DROP
+    out = subprocess.check_output('iptables -L FORWARD | grep -Ei \'.*(policy\s.*)\' | grep -oEi \'(policy [A-Z]+)\'', shell=True)
+    if out.replace('\n', '').split(' ')[1] == 'ACCEPT':
+        os.system('iptables -P FORWARD DROP  > /dev/null 2>&1')
+        setForwardPolicyToAcceptAtExit = True
+
     manager_pid = os.getpid()
     
     logger.info("Starting as PID " + str(manager_pid))
