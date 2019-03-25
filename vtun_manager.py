@@ -1062,10 +1062,17 @@ It will also connects onsite to master tunnels to create an end-to-end session",
     else:
         logger.setLevel(logging.INFO)
     
+    handler = None
     if args.debug:
         handler = logging.StreamHandler()
     else:
-        handler = logging.handlers.WatchedFileHandler('/var/log/' + daemonname + '.log')
+        log_filename = '/var/log/' + daemonname + '.log'
+        try:
+            handler = logging.handlers.WatchedFileHandler(log_filename)
+        except IOError:
+            print('Could not open "' + log_filename + '" for writing. Aborting', file=sys.stderr)
+            if os.geteuid() != 0: print('Note: This script has not been run with root privileges, which is probably the cause of the previous failure', file=sys.stderr)
+            exit(1)
     
     handler.setFormatter(logging.Formatter("%(levelname)s %(asctime)s %(name)s:%(lineno)d %(message)s"))
     logger.addHandler(handler)
@@ -1073,7 +1080,7 @@ It will also connects onsite to master tunnels to create an end-to-end session",
     
     if os.geteuid() != 0:
         if args.allow_non_root:
-            logger.warning('This script has not been run with root priviledges. Subsequent setup will probably fail.')
+            logger.warning('This script has not been run with root privileges. Subsequent setup will probably fail.')
         else:
             logger.error('This script must be run with root priviledges. Aborting. Use option --allow-non-root to override this check.')
             exit(1)
