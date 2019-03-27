@@ -38,11 +38,11 @@ For this purpose, it will allow listing currently online onsite devices, then se
 
 # How to install a remote access service
 
-See the [dedicated documentation](README.md)
+See the [dedicated documentation](INSTALL.md)
 
 # How to setup remote access tunnelling devices
 
-See the [dedicated documentation](../tunnelling-dev-scripts/README.md)
+See the [dedicated documentation](../tunnelling-dev-scripts/INSTALL.md)
 
 # Using the remote session
 
