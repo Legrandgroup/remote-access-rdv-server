@@ -4,7 +4,7 @@ It also contains the general documentation for the whole framework (see below).
 # Disclaimer
 
 This remote access framework has been designed to get access to remotely installed devices, either setup at a customer premises or on a remotely connected LAN.
-Use of this code is at your own risk, please consult the license file for the terms and conditions.
+Use of this code is at your own risk, please consult the [license file](LICENSE) for the terms and conditions.
 
 # Introduction
 
