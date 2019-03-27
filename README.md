@@ -15,7 +15,7 @@ This prototype allows a user to remotely access an onsite device as if we were d
 It has been implemented using two physical devices (Raspberry Pi, also referred to as RPI below) at each end of the channel (one for the operator, one connected to the remote LAN, usually connected to the customer premises).
 
 The following drawing gives an overview of the components as well as the network relationships between the components of this framework:
-![GitHub Logo](images/overview_networking.png)
+![Schematics of network relationships between components](images/overview_networking.png)
 
 # Physical machines & devices included in the project
 
