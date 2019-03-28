@@ -205,4 +205,4 @@ The section below lists outstanding issues/features on this code:
   * the vtund deamon: it listen to a specific port, and initialize server side of tunnels,
   * the server side of a tunnel: it is the server part of a tunnel that matches a session in the vtund deamon configuration file.
   Currently, there is one deamon for each tunnel. It might not be the best pratice since it uses a port for each tunnel.
-  Future improved version of the framework could thus implements a way to keep only one deamon for all tunnels, since the deamon can reload its configuration file, there should be a way to add/remove tunnels, regenerate configuration file and tell the deamon to reload this file.
+  Future improved version of the framework could thus implement a way to keep only one deamon for all tunnels, since the deamon can reload its configuration file, there should be a way to add/remove tunnels, regenerate configuration file and tell the deamon to reload this file.
