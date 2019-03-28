@@ -206,12 +206,17 @@ class TundevDatabase(object):
         with self._ipv4_range_pool_mutex:
             for ipv4_subnet in self.tunnel_ipv4_prefix.subnet(new_prefix=tunnel_prefix):
                 if not ipv4_subnet in self._ipv4_range_pool.values():
+                    logger.debug('Candidate subnet ' + str(ipv4_subnet) + ' is free in pool')
                     for excluded_ipv4_subnet in self.tunnel_ipv4_exclude_network:
                         if not ipv4_subnet.overlaps(excluded_ipv4_subnet):
                             self._ipv4_range_pool[tundev_id] = ipv4_subnet    # Store the new IPv4 range allocated for this device
                             return ipv4_subnet
                         else:
                             logger.warning('IPv4 subnet ' + str(ipv4_subnet) + ' is free in pool but is part of excluded network ' + str(excluded_ipv4_subnet))
+                    return ipv4_subnet
+                else:
+                    logger.warning('Candidate subnet ' + str(ipv4_subnet) + ' conflicts with already allocated subnets')
+
         raise BufferError('IPv4 range pool is full')
     
     def _free_ipv4_range(self, tundev_id):
@@ -326,7 +331,7 @@ class TundevVtun(object):
         if not tcp_port_is_free(vtun_server_tcp_port):
             logger.warning('TCP port ' + str(vtun_server_tcp_port) + ' on which the vtun server will listen seems already in use')
         
-        logger.debug('Configuring new RDV server-side vtun tunnel for tundev ' + self.username + ' in mode ' + mode + ' using addressing ' + str(tunnel_ip_network) + ' for tunnel extremities')
+        logger.debug('Configuring new RDV server-side vtun tunnel for tundev ' + self.username + ' in mode ' + mode + ' using range ' + str(tunnel_ip_network) + ' for tunnel extremities')
         self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC,
                                                                       mode = mode,
                                                                       tunnel_ip_network = str(tunnel_ip_network),
