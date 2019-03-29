@@ -35,7 +35,7 @@ You will have to edit it as root and fill-it in with the following content:
 </busconfig>
 ```
 
-# RDV server software installation
+# Software installation
 
 Inside `/opt/local`, as root, get a copy of the softare (example below is via git, but we can also unzip a release zip package):
 ```
@@ -115,6 +115,7 @@ user=1101
 adduser --system --no-create-home --uid "${user}" --shell /opt/local/rdv-server-tundev-shell/masterdev_shell.py --ingroup users rpi"${user}"
 mkdir /home/rpi"${user}"
 chown "${user}":users /home/rpi"${user}"
+```
 On this user account, no password-based authentication should be allowed (only public-key authentication).
 
 ssh should now be setup to trust the public key generated on the onsite device (we assume this key is store in the environment variable $KEY).
