@@ -2,15 +2,6 @@
 
 This documentation details a step-by-step procedure to setup a new RDV server.
 
-Installation des paquets nécessaires
-Réglage des permissions D-Bus
-Installation du logiciel côté serveur RDV
-Création de comptes sur le RDV server
-Création d'un compte pour un onsite dev
-Création d'un compte pour un master dev
-Enregistrement du compte dans le framework accès distant
-Logs du serveur RDV
-
 # Installation of required packages
 
 ```
