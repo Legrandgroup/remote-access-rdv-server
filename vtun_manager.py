@@ -208,12 +208,14 @@ class TundevDatabase(object):
                 if not ipv4_subnet in self._ipv4_range_pool.values():
                     logger.debug('Candidate subnet ' + str(ipv4_subnet) + ' is free in pool')
                     for excluded_ipv4_subnet in self.tunnel_ipv4_exclude_network:
-                        if not ipv4_subnet.overlaps(excluded_ipv4_subnet):
-                            self._ipv4_range_pool[tundev_id] = ipv4_subnet    # Store the new IPv4 range allocated for this device
-                            return ipv4_subnet
-                        else:
+                        if ipv4_subnet.overlaps(excluded_ipv4_subnet):
                             logger.warning('IPv4 subnet ' + str(ipv4_subnet) + ' is free in pool but is part of excluded network ' + str(excluded_ipv4_subnet))
-                    return ipv4_subnet
+                            ipv4_subnet = None	# Mark this subnet is unusable
+                            break # ...and exit the excluded IPv4 check loop
+                    if ipv4_subnet is not None:	# If IPv4 subnet is still usable after the previous checks, we found our candidate
+                        self._ipv4_range_pool[tundev_id] = ipv4_subnet    # Store the new IPv4 range allocated for this device
+                        return ipv4_subnet
+                    # ...else loop again to the next possible subnet
                 else:
                     logger.warning('Candidate subnet ' + str(ipv4_subnet) + ' conflicts with already allocated subnets')
 
