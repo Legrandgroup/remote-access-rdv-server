@@ -84,7 +84,7 @@ Nothing is required on the onsite device (if it is configured properly, it will 
 
 5. Once you get a shell on the master, move to the directory containing the master scripts:
    ```
-   cd tunnelling-dev-scripts
+   cd remote-access-tunnelling-dev
    ```
 
 6. On the master ssh terminal, list the currently connected onsite devices, by typing:
