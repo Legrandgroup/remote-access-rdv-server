@@ -80,14 +80,16 @@ Once logged into the onsitedev_shell, the onsite device provides mandatory infor
 
 When a master selects this device, the onsite device will setup the vtun tunnel in the desired mode (Level 2 or Level 3) using characteristics and adressing provided by the RDV server and will then wait until the tunnel drops or until the master ends the session.
 
-### The bash script onsitedev_script.sh
+### The bash script onsitedev_script.sh
+
 To ensure that the onsite device is always retrying to set up a session when no master selected it, we execute the python script onsitedev_script.py in an infinite loop, performed inside onsitedev_script.sh.
 
 This script is mainly launches the python script and wait until it ends before trying to launch this script again.
 
 When onsitedev_script.sh is run, we also store its pid is stored in a PID file. By this way, we can stop the infinite loop by using /etc/init.d/onsitedevscript stop.
 
-### The init script onsitedevscript
+### The init script onsitedevscript
+
 This init script is run at boot time on automatic onsite devices, so that they are setting up their tunnels automatically without any user intervention (see this article for details)
 
 ## Software running on the master tunnelling device
@@ -115,7 +117,7 @@ It also configures the IP addressing of these secondary interfaces, and enables 
 
 This init script is run at boot time on automatic launch master-secondary-if-watcher.py
 
-## Software running on the RDV server
+## Software running on the RDV server
 
 There are 4 software modules running on the RDV server:
 
