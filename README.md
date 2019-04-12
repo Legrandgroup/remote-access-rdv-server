@@ -171,6 +171,10 @@ In order to disconnect from the onsite, just type [Control]+[C] on the master ss
 
 Note: Unplugging the USB to Ethernet adapter, or bringing the Ethernet link down on the USB to Ethernet adapter will also make the mastet device drop the remote access session.
 
+# For developpers...
+
+If you want to know more about the software architecture of the whole system (server-side and tunnelling-devices-side software), please have a look [here](ARCH.md)
+
 # Outstanding issues & features wishlist
 
 See the file [TODO in this repository](TODO)
