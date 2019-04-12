@@ -42,7 +42,7 @@ See the [dedicated documentation](INSTALL.md)
 
 # How to setup remote access tunnelling devices
 
-See the [dedicated documentation](/LegrandGroup/tunnelling-dev-scripts/INSTALL.md)
+See the [dedicated documentation](../../tunnelling-dev-scripts/INSTALL.md)
 
 # Using the remote session
 
@@ -52,7 +52,7 @@ This section explains how to use the remote access framework to remotely connect
 
 The following elements are required before a the remote access session can be setup:
 * you will need to setup a RDV server on a publicly accessible (on TCP port 443) machine, and have it up and running. See the [related documentation](INSTALL.md).
-* you will then need to [setup at least one onsite Raspberry Pi and one master Raspberry Pi using the tutorial](/LegrandGroup/tunnelling-dev-scripts/INSTALL.md). The RDV server's IP address must be configured correctly on both onsite and master devices.
+* you will then need to [setup at least one onsite Raspberry Pi and one master Raspberry Pi using the tutorial](../../tunnelling-dev-scripts/INSTALL.md). The RDV server's IP address must be configured correctly on both onsite and master devices.
 * two accounts must be created on the RDV server, for both onsite and master devices
 * onsite and master devices must have generated public/private ssh keypairs and the public keys must have been enabled as a public key authentication to associated accounts created on the RDV server
 * the configured onsite device can now be shipped to the remote location, powered up, and connected to a network that has access to the public Internet
