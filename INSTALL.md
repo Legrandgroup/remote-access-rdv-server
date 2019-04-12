@@ -28,13 +28,15 @@ You will have to edit it as root and fill-it in with the following content:
 
 # Software installation
 
+This software relies on [a library to drive vtun from python code](https://github.com/Legrandgroup/pythonvtunlib), that we will checkout inside a subfolder `pythonvtunlib` inside the sources.
+
 Inside `/opt/local`, as root, get a copy of the softare (example below is via git, but we can also unzip a release zip package):
 ```
 mkdir -p /opt/local
 cd /opt/local/
 git clone https://git.bticino.it/scm/devsmrmtacc/rdv-server-tundev-shell.git
 cd rdv-server-tundev-shell/
-git clone https://git.bticino.it/scm/devsmrmtacc/pythonvtunlib.git
+git clone https://github.com/Legrandgroup/pythonvtunlib.git
 ```
 
 Now, run the server manually just to test:
