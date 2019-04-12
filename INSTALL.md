@@ -34,7 +34,7 @@ Inside `/opt/local`, as root, get a copy of the softare (example below is via gi
 ```
 mkdir -p /opt/local
 cd /opt/local/
-git clone https://git.bticino.it/scm/devsmrmtacc/rdv-server-tundev-shell.git
+git clone https://github.com/Legrandgroup/remote-access-rdv-server.git
 cd rdv-server-tundev-shell/
 git clone https://github.com/Legrandgroup/pythonvtunlib.git
 ```

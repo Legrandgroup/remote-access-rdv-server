@@ -42,7 +42,7 @@ See the [dedicated documentation](INSTALL.md)
 
 # How to setup remote access tunnelling devices
 
-See the [dedicated documentation](../tunnelling-dev-scripts/INSTALL.md)
+See the [dedicated documentation](/LegrandGroup/tunnelling-dev-scripts/INSTALL.md)
 
 # Using the remote session
 
@@ -52,7 +52,7 @@ This section explains how to use the remote access framework to remotely connect
 
 The following elements are required before a the remote access session can be setup:
 * you will need to setup a RDV server on a publicly accessible (on TCP port 443) machine, and have it up and running. See the [related documentation](INSTALL.md).
-* you will then need to [setup at least one onsite Raspberry Pi and one master Raspberry Pi using the tutorial](../tunnelling-dev-scripts/INSTALL.md). The RDV server's IP address must be configured correctly on both onsite and master devices.
+* you will then need to [setup at least one onsite Raspberry Pi and one master Raspberry Pi using the tutorial](/LegrandGroup/tunnelling-dev-scripts/INSTALL.md). The RDV server's IP address must be configured correctly on both onsite and master devices.
 * two accounts must be created on the RDV server, for both onsite and master devices
 * onsite and master devices must have generated public/private ssh keypairs and the public keys must have been enabled as a public key authentication to associated accounts created on the RDV server
 * the configured onsite device can now be shipped to the remote location, powered up, and connected to a network that has access to the public Internet
@@ -179,7 +179,10 @@ The section below lists outstanding issues/features on this code:
   This is random, but running many times the tundev-side scripts, we sometimes get a ConnectionFrozen exception from the tundev script, after a previous connection that was successful.
   This comes from tundev shell that blocks on get_vtun_parameters (no ouput, no prompt reappears, the shell is hung).
   When this happens, we can observe the following logs in /var/log/daemon.log on the RDV server:
-  Apr 8 12:41:09 RDVServerVM vtund[24913]: /remote-access/rdv-server-tundev-shell/blob/master/VTUN server ver 3.X 03/25/2015 (stand) (it seems there is no line mentionning the self TCP connection log that we usually have from the internal python vtun library)
+  ```
+  Apr 8 12:41:09 RDVServerVM vtund[24913]: /remote-access/rdv-server-tundev-shell/blob/master/VTUN server ver 3.X 03/25/2015 (stand)
+  ```
+  (it seems there is no line mentionning the self TCP connection log that we usually have from the internal python vtun library)
   After the script disconnects, connections do not work anymore. If we /etc/init.d/vtunmanager restart, this does not solve the pb. We have a remaining vtund on TCP localhost:5000 (shown by lsof -i) The only way to get rid of the failure is to kill the vtund and /etc/init.d/vtunmanager restart
 
 - Rename vtun_manager.py to rdv_engine.py?
