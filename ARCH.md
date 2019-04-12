@@ -50,8 +50,6 @@ In the rest of the documentation, we will use the term "end-to-end session" to d
 * one vtun tunnel being setup between the onsite device and the RDV server
 * and the other one between the master device and the same RDV server.
 
-Lionel: the following doc should be moved into the tundev repo.
-
 ## Software running on the onsite tunnelling device
 
 ![Software architecture graphical overview](images/software_architecture.svg)
@@ -70,8 +68,8 @@ That script processes the connection to the RDV server using SSH (inside an SSL 
 
 It executes a set of commands to notify the RDV server about its availability and characteristics (IP adressing, hostname).
 
-This script is an implementation of the state machine described in the architecture and technical documentation.
-Lionel: Add the arch picture also here
+This script is an implementation of the following state machine:
+![Tunnelling devices state machine](images/state_machine_tunneling_devices.png)
 
 The SSH connection to the RDV server is performed using public-key authentication, using with a pre-defined user account that has to be setup on the RDV server beforehand.
 This user account does not present a standard shell, but a restricted shell named onsitedev_shell.
