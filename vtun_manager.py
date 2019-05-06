@@ -26,13 +26,15 @@ import re
 
 import atexit
 
-#We depend on the PythonVtunLib from http://sirius.limousin.fr.grpleg.com/gitlab/ains/pythonvtunlib
+#We depend on the PythonVtunLib from https://github.com/Legrandgroup/pythonvtunlib
 from pythonvtunlib import server_vtun_tunnel
 from pythonvtunlib import client_vtun_tunnel
 from pythonvtunlib import tunnel_mode 
 
 import subprocess
-import ipaddr
+import ipaddr   # To perform IP network/address calculation
+
+import psutil   # To scan open TCP ports
 
 progname = os.path.basename(sys.argv[0])
 
@@ -50,8 +52,6 @@ def check_vtund_running():
     """
     Check if there is any "ghost" vtund process still running
     """
-    import psutil
-    
     vtund_pids = []
     for p in psutil.process_iter():
         if re.match(r'^vtund', p.name):
@@ -88,7 +88,7 @@ def cleanup_at_exit():
 #         #print(progname + ': Ignoring signal ' + str(signum), file=sys.stderr)
 #         pass
 
-def tcp_port_is_free(port, bind_address = '', *socket_args, **socket_kwargs):
+def tcp_port_is_free_using_socket(port, bind_address = '', *socket_args, **socket_kwargs):
     """ Check if a given TCP port is not already in use
     
     \param port The TCP port to test
@@ -96,6 +96,8 @@ def tcp_port_is_free(port, bind_address = '', *socket_args, **socket_kwargs):
     \param socket_args Positional args to provide to socket() call
     \param socket_kwargs Keyword args to provide to socket() call
     \return True if the TCP port is free, False otherwise
+    
+    \note The implementation uses the generic socket calls
     """
     import socket
     import errno
@@ -110,6 +112,152 @@ def tcp_port_is_free(port, bind_address = '', *socket_args, **socket_kwargs):
             raise
     return False
 
+def tcp_port_is_free_using_psutil(port):
+    """ Check if a given TCP port is not already in use
+    
+    \param port The TCP port to test
+    \return True if the TCP port is free, False otherwise
+    
+    \note The implementation uses the psutil lib
+    \warning Be careful, this is subject to TOCTOU issues
+    """
+    for conn in psutil.net_connections('tcp4'):
+        tcp_port_inuse= conn.laddr[1]
+        if tcp_port_inuse == port:
+            return False
+    return True
+
+def tcp_port_is_free(port):
+    """ Check if a given TCP port is not already in use
+    
+    \param port The TCP port to test
+    \return True if the TCP port is free, False otherwise
+    
+    \warning Be careful, this is subject to TOCTOU issues
+    """
+    if not tcp_port_is_free.use_socket:
+        try:
+            return tcp_port_is_free_using_psutil(port)
+        except AttributeError:
+            tcp_port_is_free.use_socket = True
+    return tcp_port_is_free_using_socket(port)
+
+tcp_port_is_free.use_socket = False # Static variable tcp_port_is_free.use_socket so that we remember our first failure using psutil and directly use sockets for subsequent calls
+
+class TundevDatabase(object):
+    """ Class storing known tunnelling devices, their roles and their respective configuration
+    """
+    
+    def __init__(self, tunnel_ipv4_prefix = '192.168.128.0/17', tcp_port_min = 5000, tcp_port_max = 5255, tunnel_ipv4_exclude_network = [], tunnel_host_bitlen = 2):
+        """ Constructor
+        \param tunnel_ipv4_prefix The network prefix for tunnel IPv4 addresses as a string (network address and prefix length, written using the IPv4 prefix notation). Only network addresses are allowed, not the address of a host in a network
+        \param tcp_port_min The starting TCP port of the range to use
+        \param tcp_port_min The last TCP port of the range to use (excluded from range)
+        \param tunnel_ipv4_exclude_network A list of hosts or networks to exclude. We will avoid allocating any network that collides with this list
+        \param tunnel_host_bitlen The number of bits allocated for the host part of tunnel IP addresses (usually 2 bits for 4 allocated IP addresses in total: the 2 ends of the tunnel+network address+broadcast address)
+        """
+        self.tunnel_ipv4_prefix = ipaddr.IPv4Network(tunnel_ipv4_prefix, strict=True)
+        self.tunnel_ipv4_exclude_network = []
+        for entry in tunnel_ipv4_exclude_network:   # Fill-in list self.tunnel_ipv4_exclude_network with IPv4Network objects
+            self.tunnel_ipv4_exclude_network += [ipaddr.IPv4Network(tunnel_ipv4_prefix, strict=False)]
+        self.tunnel_host_bitlen = tunnel_host_bitlen
+        self._tcp_port_min = tcp_port_min
+        self._tcp_port_max = tcp_port_max
+        self._tcp_port_pool = {} # A dict of TCP port already allocated (key is the tundev_id, value is the TCP port)
+        self._tcp_port_pool_mutex = threading.Lock() # This mutex protects writes and reads to the _tcp_port_pool attribute
+        self._ipv4_range_pool = {} # A dict of IPv4 ranges already allocated (key is the tundev_id, value is the IPv4 range)
+        self._ipv4_range_pool_mutex = threading.Lock() # This mutex protects writes and reads to the _ip_prefix_pool attribute
+        self._db = {}    # Create an empty database
+    
+    def _allocate_tcp_port(self, tundev_id):
+        """ Allocate a free TCP for a tunnelling device
+        \param tundev_id The tunnelling device unique identifier
+        \return The allocated TCP port number
+        """
+        with self._tcp_port_pool_mutex:
+            for tcp_port in range(self._tcp_port_min, self._tcp_port_max):
+                if not tcp_port in self._tcp_port_pool.values():
+                    if tcp_port_is_free(tcp_port):
+                        self._tcp_port_pool[tundev_id] = tcp_port    # Store the new TCP port allocated for this device
+                        return tcp_port
+                    else:
+                        logger.warning('TCP port ' + str(tcp_port) + ' is free in pool but seems in use')
+        raise BufferError('TCP port pool is full')
+    
+    def _free_tcp_port(self, tundev_id):
+        """ Free the TCP port allocated for a tunnelling device
+        \param tundev_id The tunnelling device unique identifier
+        
+        \note This method will raise a KeyError exception if no config has been allocated for this tundev_id
+        """
+        with self._tcp_port_pool_mutex:
+            if not tundev_id in self._tcp_port_pool:
+                raise KeyError(tundev_id)
+            del self._tcp_port_pool[tundev_id]
+    
+    def _allocate_ipv4_range(self, tundev_id):
+        """ Allocate a free IPv4 range for a tunnelling device's tunnel addressing
+        \param tundev_id The tunnelling device unique identifier
+        \return The allocated IP range, using the prefix notation
+        """
+        tunnel_prefix = self.tunnel_ipv4_prefix.max_prefixlen - self.tunnel_host_bitlen # on IPv4, will lead to /30 if self.tunnel_host_bitlen==2
+        with self._ipv4_range_pool_mutex:
+            for ipv4_subnet in self.tunnel_ipv4_prefix.subnet(new_prefix=tunnel_prefix):
+                if not ipv4_subnet in self._ipv4_range_pool.values():
+                    logger.debug('Candidate subnet ' + str(ipv4_subnet) + ' is free in pool')
+                    for excluded_ipv4_subnet in self.tunnel_ipv4_exclude_network:
+                        if ipv4_subnet.overlaps(excluded_ipv4_subnet):
+                            logger.warning('IPv4 subnet ' + str(ipv4_subnet) + ' is free in pool but is part of excluded network ' + str(excluded_ipv4_subnet))
+                            ipv4_subnet = None	# Mark this subnet is unusable
+                            break # ...and exit the excluded IPv4 check loop
+                    if ipv4_subnet is not None:	# If IPv4 subnet is still usable after the previous checks, we found our candidate
+                        self._ipv4_range_pool[tundev_id] = ipv4_subnet    # Store the new IPv4 range allocated for this device
+                        return ipv4_subnet
+                    # ...else loop again to the next possible subnet
+                else:
+                    logger.warning('Candidate subnet ' + str(ipv4_subnet) + ' conflicts with already allocated subnets')
+
+        raise BufferError('IPv4 range pool is full')
+    
+    def _free_ipv4_range(self, tundev_id):
+        """ Free the TCP port allocated for a tunnelling device
+        \param tundev_id The tunnelling device unique identifier
+        
+        \note This method will raise a KeyError exception if no config has been allocated for this tundev_id
+        """
+        with self._ipv4_range_pool_mutex:
+            if not tundev_id in self._ipv4_range_pool:
+                raise KeyError(tundev_id)
+            del self._ipv4_range_pool[tundev_id]
+    
+    def allocate_config(self, tundev_id):
+        """ Allocate the configuration for a specific tunnelling device identifier
+        \return A tuple (ip_net, tcp_port) where ip_net is an IP network range as a string using the prefix notation, and TCP port is the TCP port of the vtun service. Both of these values will then be uniquely allocated for this tundev_id
+        
+        \note This method will raise a KeyError exception if this tundev_id is unknown
+        """
+        return (str(self._allocate_ipv4_range(tundev_id).exploded), self._allocate_tcp_port(tundev_id))
+    
+    def free_config(self, tundev_id):
+        """ Free the configuration for a specific tunnelling device identifier, so that its allocated resources can be used again by a new tunnelling device
+        \param tundev_id The tunnelling device identifier for which to free the resources
+        
+        \note This method will raise an exception if part of the config has not been allocated for this tundev_id, but will try to perform as much cleanup as possible anyway
+        """
+        failure_exception = None
+        try:
+            self._free_tcp_port(tundev_id)
+        except Exception as e:
+            failure_exception = e
+        try:
+            self._free_ipv4_range(tundev_id)
+        except Exception as e:
+            if failure_exception is None:
+                failure_exception = e
+        
+        if failure_exception is not None:
+            raise failure_exception
+
 class TundevVtun(object):
     """ Class representing a vtun serving a tunnelling device connected to the RDV server
     Among other, it will make sure the life cycle of the vtun tunnels are handled in a centralised way
@@ -118,11 +266,13 @@ class TundevVtun(object):
     
     VTUND_EXEC = '/usr/local/sbin/vtund'
     
-    def __init__(self, username):
+    def __init__(self, tundev_db, username):
         """ Create a new object to represent a tunnelling device from the vtun manager perspective
         
+        \param tundev_db The TundevDatabase instance storing the config of each tunnelling device
         \param username The username (account) of the tundev_shell that is object will be bound to
         """
+        self.tundev_db = tundev_db
         self.username = username
         self.vtun_server_tunnel = None
         self._lan_ip = None
@@ -161,15 +311,11 @@ class TundevVtun(object):
         
         self._lan_dns = lan_dns_str
         
-        if self.tundev_role == 'onsite' and self.username == 'rpi1100':    # For our registered onsite RPI
-            tunnel_ip_network_str = '192.168.100.0/30'
-            vtun_server_tcp_port = 5000
-        elif self.tundev_role == 'master' and self.username == 'rpi1101':    # For our registered master RPI
-            tunnel_ip_network_str = '192.168.101.0/30'
-            vtun_server_tcp_port = 5001
-        else:
-            logger.error('No known tunnel configuration for username=\'' + self.username + '\' with role ' + self.tundev_role)
-            raise Exception('NoTunnelConfigFor:' + str(self.username))
+        try:
+            (tunnel_ip_network_str, vtun_server_tcp_port) = self.tundev_db.allocate_config(self.username)
+        except KeyError:
+            logger.error('No configuration for username=\'' + self.username)
+            raise Exception('NoConfigFor:' + str(self.username))
         
         try:
             tunnel_ip_network = ipaddr.IPv4Network(tunnel_ip_network_str)
@@ -185,7 +331,7 @@ class TundevVtun(object):
         if not tcp_port_is_free(vtun_server_tcp_port):
             logger.warning('TCP port ' + str(vtun_server_tcp_port) + ' on which the vtun server will listen seems already in use')
         
-        logger.debug('Configuring new RDV server-side vtun tunnel for tundev ' + self.username + ' in mode ' + mode + ' using addressing ' + str(tunnel_ip_network) + ' for tunnel extremities')
+        logger.debug('Configuring new RDV server-side vtun tunnel for tundev ' + self.username + ' in mode ' + mode + ' using range ' + str(tunnel_ip_network) + ' for tunnel extremities')
         self.vtun_server_tunnel = server_vtun_tunnel.ServerVtunTunnel(vtund_exec = TundevVtun.VTUND_EXEC,
                                                                       mode = mode,
                                                                       tunnel_ip_network = str(tunnel_ip_network),
@@ -294,12 +440,22 @@ class TundevVtun(object):
             self.vtun_server_tunnel.stop()
         except:
             pass
+        try:
+            self.tundev_db.free_config(self.username)
+        except:
+            pass
+    
+    def __del__(self):
+        """ Destructor
+        """
+        self.destroy()
 
 class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     """ Class allowing to send/receive D-Bus requests to a TundevVtun object
     """
-    def __init__(self, conn, username, dbus_object_path, **kwargs):
+    def __init__(self, tundev_db, conn, username, dbus_object_path, **kwargs):
         """ Instanciate a new TundevVtunDBusService handling the user account \p username
+        \param tundev_db The TundevDatabase instance storing the config of each tunnelling device
         \param conn A D-Bus connection object
         \param username Inherited from TundevBinding.__init__()
         \param dbus_object_path The path of the object to handle on D-Bus
@@ -309,7 +465,7 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
             raise Exception('MissingUsername')
         
         dbus.service.Object.__init__(self, conn = conn, object_path = dbus_object_path)
-        TundevVtun.__init__(self, username = username)
+        TundevVtun.__init__(self, tundev_db = tundev_db, username = username)
         
         logger.debug('Registered binding with D-Bus object PATH: ' + str(dbus_object_path))
     
@@ -550,11 +706,13 @@ class TundevManagerDBusService(dbus.service.Object):
         self._conn = conn   # Store the connection object... we will pass it to bindings we generate
         dbus.service.Object.__init__(self, conn = self._conn, object_path = dbus_object_path)
         
-        self._tundev_dict = {}    # Initialise with an empty TunDevBinding dict
+        self._tundev_dict = {}    # Initialise an empty TunDevBinding dict
         self._tundev_dict_mutex = threading.Lock() # This mutex protects writes and reads to the _tundev_dict attribute
         
-        self._session_pool = []    # Initialise with an empty Session array
+        self._session_pool = []    # Initialise an empty Session array
         self._session_pool_mutex = threading.Lock() # This mutex protects writes and reads to the _session_pool attribute
+        
+        self._tundev_db = TundevDatabase()   # Initialise global TundevDatabase instance used to store tunnelling device configurations
 
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='ssssss', out_signature='s')
     def RegisterTundevBinding(self, username, mode, lan_ip, lan_dns, hostname, shell_alive_lock_fn):
@@ -581,7 +739,7 @@ class TundevManagerDBusService(dbus.service.Object):
             if hostname == '':
                 hostname = None
             
-            self._tundev_dict[username] = TundevShellBinding(vtun_service = TundevVtunDBusService(conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
+            self._tundev_dict[username] = TundevShellBinding(vtun_service = TundevVtunDBusService(tundev_db = self._tundev_db, conn = self._conn, username = username, dbus_object_path = new_binding_object_path),
                                                              shell_alive_watchdog = TunDevShellWatchdog(shell_alive_lock_fn),
                                                              shell_alive_watchdog_unlock_callback = self.UnregisterTundevBinding,
                                                              shell_alive_watchdog_unlock_callback_arg = username
@@ -926,17 +1084,12 @@ dbus.mainloop.glib.DBusGMainLoop(set_as_default=True) # Use Glib's mainloop as t
 if __name__ == '__main__':
     atexit.register(cleanup_at_exit)
     
-    #Check the default policy for FORWARD table, if it is to ACCEPT, then we put it to DROP
-    out = subprocess.check_output('iptables -L FORWARD | grep -Ei \'.*(policy\s.*)\' | grep -oEi \'(policy [A-Z]+)\'', shell=True)
-    if out.replace('\n', '').split(' ')[1] == 'ACCEPT':
-        os.system('iptables -P FORWARD DROP  > /dev/null 2>&1')
-        setForwardPolicyToAcceptAtExit = True
-        
     # Parse arguments
     parser = argparse.ArgumentParser(description="This program launches a vtun manager daemon. \
 It will handle tunnel creation/destruction on behalf of tundev_shell processes, via D-Bus methods and signal. \
 It will also connects onsite to master tunnels to create an end-to-end session", prog=progname)
     parser.add_argument('-d', '--debug', action='store_true', help='display debug info', default=False)
+    parser.add_argument('-R', '--allow-non-root', dest='allow_non_root', action='store_true', help='allow execution as non-root user', default=False)
     args = parser.parse_args()
 
     # Setup logging
@@ -954,15 +1107,35 @@ It will also connects onsite to master tunnels to create an end-to-end session",
     else:
         logger.setLevel(logging.INFO)
     
+    handler = None
     if args.debug:
         handler = logging.StreamHandler()
     else:
-        handler = logging.handlers.WatchedFileHandler('/var/log/' + daemonname + '.log')
+        log_filename = '/var/log/' + daemonname + '.log'
+        try:
+            handler = logging.handlers.WatchedFileHandler(log_filename)
+        except IOError:
+            print('Could not open "' + log_filename + '" for writing. Aborting', file=sys.stderr)
+            if os.geteuid() != 0: print('Note: This script has not been run with root privileges, which is probably the cause of the previous failure', file=sys.stderr)
+            exit(1)
     
     handler.setFormatter(logging.Formatter("%(levelname)s %(asctime)s %(name)s:%(lineno)d %(message)s"))
     logger.addHandler(handler)
     logger.propagate = False
     
+    if os.geteuid() != 0:
+        if args.allow_non_root:
+            logger.warning('This script has not been run with root privileges. Subsequent setup will probably fail.')
+        else:
+            logger.error('This script must be run with root priviledges. Aborting. Use option --allow-non-root to override this check.')
+            exit(1)
+
+    #Check the default policy for FORWARD table, if it is to ACCEPT, then we put it to DROP
+    out = subprocess.check_output('iptables -L FORWARD | grep -Ei \'.*(policy\s.*)\' | grep -oEi \'(policy [A-Z]+)\'', shell=True)
+    if out.replace('\n', '').split(' ')[1] == 'ACCEPT':
+        os.system('iptables -P FORWARD DROP  > /dev/null 2>&1')
+        setForwardPolicyToAcceptAtExit = True
+
     manager_pid = os.getpid()
     
     logger.info("Starting as PID " + str(manager_pid))
