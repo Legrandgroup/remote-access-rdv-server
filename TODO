@@ -1,26 +1,19 @@
-This repository contains the source code for the tundev-shell, it is part of the remote access project.
-For more information about the remote access project, please consult the Confluence page:
-https://www.bwiki.bticino.it:8443/display/PRJACCESDISTANT
-
-The tundev-shell is a command-line interpreter running on the RDV server. It is via this shell that all tunnelling devs exchange information with the RDV server.
-
-This shell is running on the RDV server, and implemented in python
-For more information about the tundev-shell, please consult the related Confluence page at:
-https://www.bwiki.bticino.it:8443/display/PRJACCESDISTANT/Architecture+and+technical+documentation#Architectureandtechnicaldocumentation-tundev-shell
-
-
-
 The section below lists outstanding issues/features on this code:
-- tundev shell blocks on get_vtun_parameters
+
+- Possible issue, to reproduce:
+  tundev shell blocks on get_vtun_parameters
   This is random, but running many times the tundev-side scripts, we sometimes get a ConnectionFrozen exception from the tundev script, after a previous connection that was successful.
   This comes from tundev shell that blocks on get_vtun_parameters (no ouput, no prompt reappears, the shell is hung).
   When this happens, we can observe the following logs in /var/log/daemon.log on the RDV server:
-  Apr 8 12:41:09 RDVServerVM vtund[24913]: /remote-access/rdv-server-tundev-shell/blob/master/VTUN server ver 3.X 03/25/2015 (stand) (it seems there is no line mentionning the self TCP connection log that we usually have from the internal python vtun library)
+  ```
+  Apr 8 12:41:09 RDVServerVM vtund[24913]: /remote-access/rdv-server-tundev-shell/blob/master/VTUN server ver 3.X 03/25/2015 (stand)
+  ```
+  (it seems there is no line mentionning the self TCP connection log that we usually have from the internal python vtun library)
   After the script disconnects, connections do not work anymore. If we /etc/init.d/vtunmanager restart, this does not solve the pb. We have a remaining vtund on TCP localhost:5000 (shown by lsof -i) The only way to get rid of the failure is to kill the vtund and /etc/init.d/vtunmanager restart
 
 - Rename vtun_manager.py to rdv_engine.py?
 
-- Remove the concept of username in vtun_manager.py (and replace it with something more generic, for example tundev_id)
+- Finish to remove the concept of username in vtun_manager.py (and replace it with something more generic, for example tundev_id)
   Even if, at the end of the day, tundev_id will indeed match with the username, the concept of username should only be used in tundev_shell's code
 
 - Allow segregation of onsite depending on master (access control)
@@ -36,13 +29,9 @@ The section below lists outstanding issues/features on this code:
 - Removing test D-Bus method ConfigureService from vtun_manager.py
   Access to configure service via TundevVtunDBusService's ConfigureService() D-Bus method should not be allowed, only direct method invokation of TundevVtunDBusService.configure_service() inherited from TundevVtun
 
-- Remove hardcoded list of profiles and rpi* accounts from vtun_manager.py
-  Code has been cleaned-up and can now use an external database since commit ed79c20d6aadaf3f0e8bb762cc64bd1eefa01574
-
 - On PythonVtunLib, improve server-side tunnel management
   On the server side of vtun, there are 2 items:
   * the vtund deamon: it listen to a specific port, and initialize server side of tunnels,
   * the server side of a tunnel: it is the server part of a tunnel that matches a session in the vtund deamon configuration file.
   Currently, there is one deamon for each tunnel. It might not be the best pratice since it uses a port for each tunnel.
-  
-  Future version of the project might implements a way to keep only one deamon for all tunnels, since the deamon can reload its configuration file, there should be a way to add/remove tunnels, regenerate configuration file and tell the deamon to reload this file.
+  Future improved version of the framework could thus implement a way to keep only one deamon for all tunnels, since the deamon can reload its configuration file, there should be a way to add/remove tunnels, regenerate configuration file and tell the deamon to reload this file.
