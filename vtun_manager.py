@@ -212,10 +212,11 @@ class TundevDatabase(object):
                             break # ...and exit the excluded IPv4 check loop
                     if ipv4_subnet is not None:	# If IPv4 subnet is still usable after the previous checks, we found our candidate
                         self._ipv4_range_pool[tundev_id] = ipv4_subnet    # Store the new IPv4 range allocated for this device
+                        logger.info('Allocating a new subnet ' + str(ipv4_subnet) + ' on the RDV server pool for tunnel IP addressing')
                         return ipv4_subnet
                     # ...else loop again to the next possible subnet
                 else:
-                    logger.warning('Candidate subnet ' + str(ipv4_subnet) + ' conflicts with already allocated subnets')
+                    logger.debug('Candidate subnet ' + str(ipv4_subnet) + ' conflicts with already allocated subnets')
 
         raise BufferError('IPv4 range pool is full')
     
