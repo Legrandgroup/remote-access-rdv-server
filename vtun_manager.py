@@ -147,8 +147,6 @@ tcp_port_is_free.use_socket = False # Static variable tcp_port_is_free.use_socke
 class TundevDatabase(object):
     """ Class storing known tunnelling devices, their roles and their respective configuration
     """
-    ROLE_MASTER = 'master' # Tunnelling device has a master role
-    ROLE_ONSITE = 'onsite' # Tunnelling device has an onsite role
     
     def __init__(self, tunnel_ipv4_prefix = '192.168.128.0/17', tcp_port_min = 5000, tcp_port_max = 5255, tunnel_ipv4_exclude_network = [], tunnel_host_bitlen = 2):
         """ Constructor
