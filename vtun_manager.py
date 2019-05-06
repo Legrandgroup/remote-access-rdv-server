@@ -474,7 +474,7 @@ class TundevVtunDBusService(TundevVtun, dbus.service.Object):
     # D-Bus-related methods
     @dbus.service.method(dbus_interface = DBUS_SERVICE_INTERFACE, in_signature='sss', out_signature='')
     def ConfigureService(self, mode, lan_ip, lan_dns):
-        """ (Configure a tunnel server to handle connectivity with this tunnelling device
+        """ Configure a tunnel server to handle connectivity with this tunnelling device
         \param mode A string or TunnelMode object describing the type of tunnel (L2, L3 etc...)
         \param lan_ip The IP address of the tundev on the remote LAN
         \param lan_dns The list of DNS servers of the tundev on the remote LAN
