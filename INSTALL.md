@@ -67,9 +67,11 @@ sudo cat /etc/passwd
 
 If you followed the above convention, all accounts associated with tunelling devices will have a UID `11xx`, and the corresponding usernames will look like `rpi11xx`.
 
+In the examples below, we will assume *rpi1100* will be the account for the onsite device, and *rpi1101* for the master device, please thus update the value or variable *user* to match your local setup.
+
 # Account creation for an onsite dev
 
-On the RDV server, as root:
+On the RDV server, as root, type:
 ```
 user=1100
 adduser --system --no-create-home --uid "${user}" --shell /opt/local/rdv-server-tundev-shell/onsitedev_shell.py --ingroup users rpi"${user}"
@@ -78,8 +80,9 @@ chown "${user}":users /home/rpi"${user}"
 ```
 On this user account, no password-based authentication should be allowed (only public-key authentication).
 
-ssh should now be setup to trust the public key generated on the onsite device (we assume this key is store in the environment variable $KEY).
-As root:
+ssh should now be setup to trust the public key generated on the onsite device and that can be found in file `~/.ssh/id_rsa.pub` on that device (we assume this key is stored in the environment variable `$KEY`).
+
+On the RDV server, as root, type:
 ```
 # KEY="ssh-rsa AAAAB3NzaC1yc2EAAA..."
 mkdir -p /home/rpi"${user}"/.ssh
@@ -102,7 +105,7 @@ Once the UNIX account for the new onsite dev has been created, you will have to 
 
 # Account creation for a master dev
 
-On the RDV server, as root:
+On the RDV server, as root, type:
 ```
 user=1101
 adduser --system --no-create-home --uid "${user}" --shell /opt/local/rdv-server-tundev-shell/masterdev_shell.py --ingroup users rpi"${user}"
@@ -111,8 +114,9 @@ chown "${user}":users /home/rpi"${user}"
 ```
 On this user account, no password-based authentication should be allowed (only public-key authentication).
 
-ssh should now be setup to trust the public key generated on the onsite device (we assume this key is store in the environment variable $KEY).
-As root:
+ssh should now be setup to trust the public key generated on the master device and that can be found in file `~/.ssh/id_rsa.pub` on that device (we assume this key is stored in the environment variable `$KEY`).
+
+On the RDV server, as root, type:
 ```
 # KEY="ssh-rsa AAAAB3NzaC1yc2EAAA..."
 mkdir -p /home/rpi"${user}"/.ssh
